@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Multiple PO PDFs</title>
+</head>
+<body>
+    <h1>Upload Multiple PO PDFs</h1>
+
+    <p><a href="/dashboard">Go to Dashboard</a></p>
+
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="pdf_files" accept=".pdf" multiple required>
+        <br><br>
+        <button type="submit">Upload All</button>
+    </form>
+
+</body>
+</html>

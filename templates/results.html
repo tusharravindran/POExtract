@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PO Extraction Results</title>
+</head>
+<body>
+    <h1>Extracted PO Data</h1>
+
+    <table border="1" cellpadding="5">
+        <tr>
+            <th>Filename</th>
+            <th>PO #</th>
+            <th>PO Date</th>
+            <th>Location</th>
+            <th>Delivery Date</th>
+            <th>EAN</th>
+            <th>Description</th>
+            <th>CaseLot</th>
+            <th>Quantity</th>
+        </tr>
+        {% for row in data %}
+        <tr>
+            <td>{{ row.Filename }}</td>
+            <td>{{ row['PO #'] }}</td>
+            <td>{{ row['PO Date'] }}</td>
+            <td>{{ row.Location }}</td>
+            <td>{{ row['Delivery Date'] }}</td>
+            <td>{{ row['EAN NO'] }}</td>
+            <td>{{ row['Article Description'] }}</td>
+            <td>{{ row.CaseLot }}</td>
+            <td>{{ row.Quantity }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>	
+    <meta charset="UTF-8">
+    <title>Style Master</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #E9F4FF;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { margin-bottom: 10px; }
+        a {
+            font-size: 18px;
+            margin-right: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+            font-size: 13px;
+            text-align: left;
+        }
+        th {
+            background: #0074D9;
+            color: white;
+        }
+        input, select {
+            padding: 4px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Style Master</h1>
+
+<a href="/">Home</a>
+<a href="/upload">Upload New PO</a>
+<a href="/dashboard">Dashboard</a>
+
+<hr>
+
+<h3>Add New EAN + Style + Buyer</h3>
+
+<form action="/save_style" method="POST">
+    <table>
+        <tr>
+            <td><input type="text" name="ean" placeholder="Enter EAN"></td>
+            <td><input type="text" name="style_no" placeholder="Enter Style"></td>
+
+            <td>
+                <select name="buyer">
+                    <option value="">-- Select Buyer --</option>
+                    {% for b in buyers %}
+                    <option value="{{b}}">{{b}}</option>
+                    {% endfor %}
+                </select>
+            </td>
+
+            <td><button type="submit">Add</button></td>
+        </tr>
+    </table>
+</form>
+
+<h3>Existing Records</h3>
+
+<table border="1" cellpadding="5">
+    <tr>
+        <th>ID</th>
+        <th>EAN</th>
+        <th>Style No</th>
+        <th>Buyer</th>
+        <th>Delete</th>
+    </tr>
+
+    {% for s in styles %}
+    <tr>
+        <td>{{ s.id }}</td>
+        <td>{{ s.ean }}</td>
+        <td>{{ s.style_no }}</td>
+        <td>{{ s.buyer }}</td>
+        <td>
+            <a href="/delete_style/{{ s.id }}" style="color:red;">Delete</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>

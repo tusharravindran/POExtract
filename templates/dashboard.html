@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>PO Dashboard</title>
+
+    <style>
+        /* ==================== STYLES (Keep existing styles for colors and widths) ==================== */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #E9F4FF;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        a {
+            font-size: 18px;
+            margin-right: 20px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            white-space: nowrap;
+            margin-top: 15px;
+            max-height: 80vh; 
+        }
+
+        table {
+            border-collapse: collapse;
+            width: max-content;
+            background: white;
+        }
+
+        /* HEADER (frozen top) */
+        thead th {
+            background: #0074D9;
+            color: white;
+            padding: 1px 4px; /* Reduced padding to fit filter dropdowns */
+            text-align: center;
+            border: 1px solid #ccc;
+            font-size: 13px;
+            position: sticky;
+            top: 0;
+            z-index: 30;
+       /* CRITICAL FIXES */
+            white-space: nowrap; /* Prevents text and content from wrapping */
+            overflow: hidden;    /* Hides anything that still exceeds the column width */
+        }
+
+        /* Styling for the new filter select boxes in the header */
+        thead select {
+            width: 90%; 
+            padding: 0px 0px;
+            margin-top: 2px;
+            font-size: 11px;
+            color: #333;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-sizing: border-box;
+        }
+
+        /* FIX: Compact filter widths for small columns */
+th.w-ocn select {
+    width: 55px !important;
+}
+
+th.w-small select {
+    width: 45px !important;
+}
+
+th.w-medium select {
+    width: 80px !important;
+}
+
+/* Ensure dropdown height stays small */
+thead select {
+    height: 18px;
+    padding: 0px 2px;
+}
+
+
+        /* The text label in the header */
+        thead .header-label {
+            display: block;
+            margin-bottom: 2px;
+            white-space: nowrap; /* Ensure header label doesn't wrap */
+        }
+
+        tbody td {
+            padding: 4px;
+            border: 1px solid #ccc;
+            text-align: center;
+            font-size: 13px;
+            vertical-align: middle;
+            background: white;
+            max-height: 40px;
+        }
+
+        /* Column widths - RESTORED */
+        .w-id 	 { width: 30px; }
+        .w-ocn 	 { width: 60px; }
+        .w-buyer { width: 140px; }
+        .w-small { width: 40px; }
+        .w-medium { width: 90px; }
+        .w-normal { width: 100px; }
+        .w-large { width: 240px; }
+        
+        /* ... (Keep other input/textarea/color styles as they were) ... */
+        
+        /* Ex-Factory highlight (full row) - CRITICAL FOR ISSUE 3 FIX */
+        .due-soon td {
+            background-color: #FFF3B0 !important; /* Yellow */
+        }
+
+        .overdue td {
+            background-color: #FA002F !important; /* Full Red */
+            color: white !important;
+        }
+
+        /* ============ FREEZE FIRST 6 COLUMNS ============ */
+
+        /* Common sticky style for left-frozen cells */
+        .freeze-col {
+            position: sticky;
+            left: 0;
+            z-index: 20;
+            background: white;
+        }
+
+        /* Header cells that are frozen need stronger z-index + blue */
+        thead th.freeze-col {
+            z-index: 40;
+            background: #0074D9;
+            color: white;
+        }
+
+        /* Left offsets: based on your widths (approx) */
+        .freeze-1 { left: 0px; }            /* ID width 30 */
+        .freeze-2 { left: 30px; }           /* 30 */
+        .freeze-3 { left: 170px; }          /* 30 + 140 */
+        .freeze-4 { left: 260px; }          /* 30 + 140 + 90 */
+        .freeze-5 { left: 350px; }          /* 30 +140+90+90 */
+        .freeze-6 { left: 450px; }          /* +100 */
+
+
+      /* FILTER SELECT — HEADER */
+thead select[data-filter-column] {
+    width: 85%;
+    max-width: 85%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+/* SELECTS IN TABLE BODY */
+tbody select {
+    width: 95%;
+    max-width: 95%;
+    box-sizing: border-box;
+}
+
+/* INPUTS IN TABLE BODY */
+tbody input {
+    width: 95%;
+    max-width: 95%;
+    box-sizing: border-box;
+}
+
+
+    </style>
+
+    <script>
+        // ==================== JAVASCRIPT ====================
+
+        function updateField(id, field, value, element) {
+            element.style.outline = '2px solid #0074D9'; 
+            setTimeout(() => { element.style.outline = 'none'; }, 500);
+
+            fetch("/update_field", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ row_id: id, field: field, value: value }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.ok) {
+                    const row = element.closest('tr');
+                    
+                    // FIX for Issue 6: GRN DATE: Auto-set GRN Status & Update Row
+                    if (field === 'grn_date' && data.new_grn_status) {
+                        const grnStatusSelect = row.querySelector('select[data-field="grn_status"]');
+                        if (grnStatusSelect) {
+                            grnStatusSelect.value = data.new_grn_status;
+                            grnStatusSelect.style.backgroundColor = '#dff0d8';
+                            setTimeout(() => grnStatusSelect.style.backgroundColor = 'white', 500);
+                        }
+                    }
+
+                    // FIX for Issue 5: DISPATCHED BOX: Auto-calculate Qty & Balance
+                    if (field === 'dispatched_box' && data.dispatched_qty !== undefined) {
+                        const dispQtyInput = row.querySelector('input[data-field="dispatched_qty"]');
+                        if (dispQtyInput) dispQtyInput.value = data.dispatched_qty;
+
+                        const balanceCell = row.querySelector('td[data-field="balance"]');
+                        if (balanceCell) balanceCell.textContent = data.balance;
+                    }
+                    
+                    // CRITICAL FIX: Reload the page on STATUS change to enforce re-sort 
+                    if (field === 'status') {
+                        window.location.reload(); 
+                        return; 
+                    }
+                    
+                    // Re-apply filters after an inline update (to keep current view)
+                    filterTable();
+                }
+            })
+            .catch(error => console.error('Error updating field:', error));
+        }
+
+        // Main filtering function - now handles both search box and multiple column filters
+        function filterTable() {
+    let rows = document.querySelectorAll("tbody tr");
+    let columnFilters = {};
+    
+    // Collect all column filter values
+    document.querySelectorAll('thead select[data-filter-column]').forEach(select => {
+        if (select.value !== "") {
+            // Use the column index stored in data-column-index
+            columnFilters[select.dataset.columnIndex] = select.value.toLowerCase();
+        }
+    });
+
+    rows.forEach((row) => {
+        let shouldDisplay = true;
+        let rowCells = row.querySelectorAll("td");
+        
+        // --- 1. Column Dropdown Filters ---
+        if (shouldDisplay) {
+            for (let colIndex in columnFilters) {
+                let filterValue = columnFilters[colIndex];
+                let cellContent;
+                
+                // Handle special case for FACTORY (Index 14) and STATUS (Index 20), which are dropdowns in the cell
+                if (colIndex == 14 || colIndex == 20) { 
+                    let cellSelect = rowCells[colIndex].querySelector("select");
+                    cellContent = cellSelect ? cellSelect.value : '';
+                } else {
+                    // Default: use the text content of the cell
+                    cellContent = rowCells[colIndex].innerText.trim();
+                }
+                
+                // If the cell content doesn't match the filter value, hide the row
+                if (cellContent.toLowerCase() !== filterValue) {
+                    shouldDisplay = false;
+                    break; 
+                }
+            }
+        }
+
+        row.style.display = shouldDisplay ? "" : "none";
+    });
+}  
+        
+        // New function to populate the filter dropdowns dynamically
+      // In the <script> section of dashboard.html
+// ...
+// New function to populate the filter dropdowns dynamically
+function initializeColumnFilters() {
+    const table = document.querySelector('table');
+    const headerRow = table.querySelector('thead tr');
+    const bodyRows = table.querySelectorAll('tbody tr');
+    const columnSelects = headerRow.querySelectorAll('select[data-filter-column]');
+
+    columnSelects.forEach(select => {
+        const columnIndex = parseInt(select.dataset.columnIndex);
+        const uniqueValues = new Set();
+        
+        bodyRows.forEach(row => {
+            const cell = row.querySelectorAll('td')[columnIndex];
+            let cellValue;
+
+            if (!cell) return; // Skip if cell doesn't exist
+
+            // CRITICAL FIX FOR SELECTS (like Status and Factory)
+            const cellSelect = cell.querySelector("select");
+            if (cellSelect) {
+               // Get the currently selected value from the dropdown inside the cell
+                cellValue = cellSelect.value.trim();
+            } else {
+                // Default: use the text content of the cell (for plain text/inputs)
+                cellValue = cell.innerText.trim();
+            }
+
+            if (cellValue && cellValue !== '-- Select --') { // Exclude empty values and default text
+                uniqueValues.add(cellValue);
+            }
+        });
+
+        // Clear existing options
+        if (select.id !== "transporterFilter") {
+            // Check if the original (All) option needs to be preserved
+            let originalOptions = select.innerHTML.includes('(All)') ? '<option value="">(All)</option>' : '';
+            select.innerHTML = originalOptions;
+
+            // Add unique values as new options
+            Array.from(uniqueValues).sort().forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                select.appendChild(option);
+            });
+        }
+    });
+}
+
+      document.addEventListener("DOMContentLoaded", function() {
+    // Initialize the column filter dropdowns with unique values
+    initializeColumnFilters();
+    
+    // Attach filterTable function to all column filter dropdowns (change)
+    document.querySelectorAll('thead select[data-filter-column]').forEach(select => {
+        select.addEventListener('change', filterTable);
+    });
+});
+
+    </script>
+
+
+</head>
+
+<body>
+
+    <h1>PO Dashboard</h1>
+
+    <a href="/">Home</a>
+    <a href="/upload">Upload New PO</a>
+    <a href="/style-master">Style Master</a>
+    
+    <a href="/download_excel" style="font-size:16px; color:blue; margin-left: 20px;">Download Excel Report</a>
+    <a href="/refresh_styles" style="font-size:16px; color:green; margin-left: 10px;">Refresh Style/Buyer</a>
+    <br><br>
+
+      <div class="table-container">
+
+        <table>
+            <thead>
+                <tr>
+                    <th class="w-id freeze-col freeze-1">
+                        <span class="header-label">ID</span>
+                        <select data-filter-column data-column-index="0"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-buyer freeze-col freeze-2">
+                        <span class="header-label">Buyer</span>
+                        <select data-filter-column data-column-index="1"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium freeze-col freeze-3">
+                        <span class="header-label">PO #</span>
+                        <select data-filter-column data-column-index="2"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium freeze-col freeze-4">
+                        <span class="header-label">PO Date</span>
+                        <select data-filter-column data-column-index="3"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-normal freeze-col freeze-5">
+                        <span class="header-label">Style</span>
+                        <select data-filter-column data-column-index="4"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-ocn freeze-col freeze-6">
+                        <span class="header-label">OCN</span>
+                        <select data-filter-column data-column-index="5"><option value="">(All)</option></select>
+                    </th>
+                    
+                    <th class="w-medium">
+                        <span class="header-label">Delivery Date</span>
+                        <select data-filter-column data-column-index="6"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium">
+                        <span class="header-label">Delivery Month</span>
+                        <select data-filter-column data-column-index="7"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium">
+                        <span class="header-label">Location</span>
+                        <select data-filter-column data-column-index="8"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium">
+                        <span class="header-label">EAN</span>
+                        <select data-filter-column data-column-index="9"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-large">
+                        <span class="header-label">Description</span>
+                        <select data-filter-column data-column-index="10"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-small">
+                        <span class="header-label">CaseLot</span>
+                        <select data-filter-column data-column-index="11"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-small">
+                        <span class="header-label">Quantity</span>
+                        <select data-filter-column data-column-index="12"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-small">
+                        <span class="header-label">No Boxes</span>
+                        <select data-filter-column data-column-index="13"><option value="">(All)</option></select>
+                    </th>
+                    
+                    <th class="w-small">
+                        <span class="header-label">Factory</span>
+                        <select data-filter-column data-column-index="14"><option value="">(All)</option></select>
+                    </th>
+                    
+                    <th class="w-medium">
+                        <span class="header-label">Ex-Factory Date</span>
+                        <select data-filter-column data-column-index="15"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-large">
+                        <span class="header-label">Factory Remarks</span>
+                        <select data-filter-column data-column-index="16"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-small">
+                        <span class="header-label">Dispatched Box</span>
+                        <select data-filter-column data-column-index="17"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-small">
+                        <span class="header-label">Dispatched Qty</span>
+                        <select data-filter-column data-column-index="18"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-small">
+                        <span class="header-label">Balance</span>
+                        <select data-filter-column data-column-index="19"><option value="">(All)</option></select>
+                    </th>
+                    
+                    <th class="w-medium">
+                        <span class="header-label">Status</span>
+                        <select data-filter-column data-column-index="20"><option value="">(All)</option></select>
+                    </th>
+                    
+                    <th class="w-medium">
+                        <span class="header-label">Dispatch Date</span>
+                        <select data-filter-column data-column-index="21"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium">
+                        <span class="header-label">Transporter</span>
+                        <select data-filter-column data-column-index="22"><option value="">(All)</option></select>
+ 
+                    </th>
+                    <th class="w-medium">
+                        <span class="header-label">GRN Date</span>
+                        <select data-filter-column data-column-index="23"><option value="">(All)</option></select>
+                    </th>
+                    <th class="w-medium">
+                        <span class="header-label">GRN Status</span>
+                        <select data-filter-column data-column-index="24"><option value="">(All)</option></select>
+</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for r in data %}
+                <tr class="{% if r.ex_factory_flag == 'overdue' %}overdue{% elif r.ex_factory_flag == 'due' %}due-soon{% endif %}">
+
+                    <td class="w-id freeze-col freeze-1">{{ r.id }}</td>
+                    <td class="w-buyer freeze-col freeze-2">{{ r.buyer }}</td>
+                    <td class="w-medium freeze-col freeze-3">{{ r.po_number }}</td>
+                    <td class="w-medium freeze-col freeze-4">{{ r.po_date }}</td>
+                    <td class="w-normal freeze-col freeze-5">{{ r.style_no }}</td>
+                    <td class="w-ocn freeze-col freeze-6">
+                        <input value="{{ r.ocn }}"
+                            onblur="updateField({{r.id}}, 'ocn', this.value, this)">
+                    </td>
+
+                    <td class="w-medium">{{ r.delivery_date }}</td>
+                    <td class="w-medium">{{ r.delivery_month }}</td>
+                    <td class="w-medium">{{ r.location }}</td>
+                    <td class="w-medium">{{ r.ean }}</td>
+                    <td class="w-large">{{ r.description }}</td>
+                    <td class="w-small">{{ r.caselot }}</td>
+                    <td class="w-small">{{ r.quantity }}</td>
+                    <td class="w-small">{{ r.no_of_boxes }}</td>
+
+                    <td class="w-small">
+                        <select onchange="updateField({{r.id}}, 'factory', this.value, this)" data-field="factory">
+                            <option value="">-- Select --</option>
+                            {% for factory in factories %}
+                                <option value="{{ factory }}" {% if r.factory == factory %}selected{% endif %}>{{ factory }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+
+                    <td class="w-medium">{{ r.ex_factory_date }}</td>
+
+                    <td class="w-large" data-remarks="{{ r.remarks }}">
+                        <textarea onblur="updateField({{r.id}}, 'remarks', this.value, this)">{{ r.remarks }}</textarea>
+                    </td>
+
+                    <td class="w-small">
+                        <input value="{{ r.dispatched_box }}"
+                            onblur="updateField({{r.id}}, 'dispatched_box', this.value, this)">
+                    </td>
+
+                    <td class="w-small">
+                        <input value="{{ r.dispatched_qty }}" readonly data-field="dispatched_qty">
+                    </td>
+
+                    <td class="w-small" data-field="balance">{{ r.balance }}</td>
+
+                    <td class="w-medium">
+                        <select onchange="updateField({{r.id}}, 'status', this.value, this)" data-field="status">
+                            <option value="Pending" 	{% if r.status=='Pending' %}selected{% endif %}>Pending</option>
+                            <option value="Dispatched" {% if r.status=='Dispatched' %}selected{% endif %}>Dispatched</option>
+                            <option value="Cancelled" 	{% if r.status=='Cancelled' %}selected{% endif %}>Cancelled</option>
+                        </select>
+                    </td>
+
+                    <td class="w-medium">
+                        <input type="date" value="{{ r.dispatch_date }}"
+                            onblur="updateField({{r.id}}, 'dispatch_date', this.value, this)">
+                    </td>
+
+                    <td class="w-medium">
+                        <select onchange="updateField({{r.id}}, 'transporter', this.value, this)">
+                            <option value="">-- Select --</option>
+                            {% for t in transporters %}
+                            <option value="{{t}}" {% if r.transporter == t %}selected{% endif %}>{{t}}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+
+                    <td class="w-medium">
+                        <input type="date" value="{{ r.grn_date }}"
+                            onblur="updateField({{r.id}}, 'grn_date', this.value, this)">
+                    </td>
+
+                    <td class="w-medium">
+                        <select onchange="updateField({{r.id}}, 'grn_status', this.value, this)" data-field="grn_status">
+                            <option value="Pending" {% if r.grn_status=='Pending' %}selected{% endif %}>Pending</option>
+                            <option value="Cleared" {% if r.grn_status=='Cleared' %}selected{% endif %}>Cleared</option>
+                        </select>
+                    </td>
+
+                </tr>
+                {% endfor %}
+            </tbody>
+
+        </table>
+    </div> 
+
+</body>
+</html>
