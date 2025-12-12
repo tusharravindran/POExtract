@@ -68,3 +68,4 @@ A Flask web application for extracting and managing Purchase Order (PO) data fro
 - Database tables are automatically created on first run
 - Uploaded PDFs are stored in the `uploads/` directory
 
+

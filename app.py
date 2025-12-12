@@ -4,9 +4,16 @@ import fitz
 import pandas as pd
 import io
 from datetime import datetime, timedelta
+from sqlalchemy import case, func, or_
 
 from extractor import extract_items
-from database import get_po_db_connection, initialize_db
+from database import (
+    get_po_db_connection, 
+    initialize_db, 
+    get_db_session,
+    POItem, 
+    StyleMaster
+)
 
 app = Flask(__name__)
 
@@ -127,65 +134,53 @@ def calculate_exfactory_flag(date_str):
         return ""
 
 
-def upsert_po_item(cur, row):
+def upsert_po_item(session, row):
     """
-    Avoid duplicates in po_items:
+    Avoid duplicates in po_items using SQLAlchemy:
     - Key = (po_number, ean)
     - If not exists -> INSERT
     - If exists and values changed -> UPDATE + is_revised=1
     - If exists and same -> do nothing
     """
-    cur.execute("SELECT * FROM po_items WHERE po_number=? AND ean=?",
-                (row["po_number"], row["ean"]))
-    existing = cur.fetchone()
+    existing = session.query(POItem).filter_by(
+        po_number=row["po_number"],
+        ean=row["ean"]
+    ).first()
 
     if existing is None:
         # Insert new
-        cur.execute(
-            """
-            INSERT INTO po_items
-            (filename, po_number, po_date, style_no, ocn, buyer,
-             delivery_date, delivery_month, location,
-             ean, description, caselot, quantity,
-             no_of_boxes, factory, ex_factory_date, factory_remarks,
-             dispatched_box, dispatched_qty, balance, status,
-             dispatch_date, transporter, grn_date, grn_status,
-             is_revised)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                row["filename"],
-                row["po_number"],
-                row["po_date"],
-                row["style_no"],
-                row["ocn"],
-                row["buyer"],
-                row["delivery_date"],
-                row["delivery_month"],
-                row["location"],
-                row["ean"],
-                row["description"],
-                row["caselot"],
-                row["quantity"],
-                row["no_of_boxes"],
-                row["factory"],
-                row["ex_factory_date"],
-                row["factory_remarks"],
-                row["dispatched_box"],
-                row["dispatched_qty"],
-                row["balance"],
-                row["status"],
-                row["dispatch_date"],
-                row["transporter"],
-                row["grn_date"],
-                row["grn_status"],
-                0,  # new row, not revised
-            ),
+        po_item = POItem(
+            filename=row["filename"],
+            po_number=row["po_number"],
+            po_date=row["po_date"],
+            style_no=row["style_no"],
+            ocn=row["ocn"],
+            buyer=row["buyer"],
+            delivery_date=row["delivery_date"],
+            delivery_month=row["delivery_month"],
+            location=row["location"],
+            ean=row["ean"],
+            description=row["description"],
+            caselot=row["caselot"],
+            quantity=row["quantity"],
+            no_of_boxes=row["no_of_boxes"],
+            factory=row["factory"],
+            ex_factory_date=row["ex_factory_date"],
+            factory_remarks=row["factory_remarks"],
+            dispatched_box=row["dispatched_box"],
+            dispatched_qty=row["dispatched_qty"],
+            balance=row["balance"],
+            status=row["status"],
+            dispatch_date=row["dispatch_date"],
+            transporter=row["transporter"],
+            grn_date=row["grn_date"],
+            grn_status=row["grn_status"],
+            is_revised=False
         )
+        session.add(po_item)
     else:
         # Compare core business fields only
         changed = False
-
         fields_to_check = [
             "style_no",
             "delivery_date",
@@ -199,7 +194,7 @@ def upsert_po_item(cur, row):
         ]
 
         for f in fields_to_check:
-            if row[f] != existing[f]:
+            if row[f] != getattr(existing, f, None):
                 changed = True
                 break
 
@@ -209,50 +204,30 @@ def upsert_po_item(cur, row):
 
         # When revised -> update business fields, keep dispatch/factory/buyer/status etc as they are
         new_qty = row["quantity"]
-        old_dispatched = existing["dispatched_qty"] or 0
+        old_dispatched = existing.dispatched_qty or 0
         new_balance = new_qty - old_dispatched
 
-        cur.execute(
-            """
-            UPDATE po_items
-               SET style_no=?,
-                   delivery_date=?,
-                   delivery_month=?,
-                   location=?,
-                   description=?,
-                   caselot=?,
-                   quantity=?,
-                   no_of_boxes=?,
-                   ex_factory_date=?,
-                   balance=?,
-                   is_revised=1
-             WHERE id=?
-            """,
-            (
-                row["style_no"],
-                row["delivery_date"],
-                row["delivery_month"],
-                row["location"],
-                row["description"],
-                row["caselot"],
-                row["quantity"],
-                row["no_of_boxes"],
-                row["ex_factory_date"],
-                new_balance,
-                existing["id"],
-            ),
-        )
+        existing.style_no = row["style_no"]
+        existing.delivery_date = row["delivery_date"]
+        existing.delivery_month = row["delivery_month"]
+        existing.location = row["location"]
+        existing.description = row["description"]
+        existing.caselot = row["caselot"]
+        existing.quantity = row["quantity"]
+        existing.no_of_boxes = row["no_of_boxes"]
+        existing.ex_factory_date = row["ex_factory_date"]
+        existing.balance = new_balance
+        existing.is_revised = True
 
 # ---------------- STYLE MASTER ROUTES ---------------- #
 
 
 @app.route("/style-master")
 def style_master():
-    conn = get_po_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM style_master ORDER BY id DESC")
-    rows = cur.fetchall()
-    conn.close()
+    with get_db_session() as session:
+        # Query style_master table (id is primary key, ean is unique)
+        styles = session.query(StyleMaster).order_by(StyleMaster.id.desc()).all()
+        rows = [style.to_dict() for style in styles]
     return render_template("style_master.html", styles=rows, buyers=BUYERS)
 
 
@@ -265,57 +240,46 @@ def save_style():
     if not ean:
         return redirect("/style-master")
 
-    conn = get_po_db_connection()
-    cur = conn.cursor()
-
-    # If same EAN exists, update it; else insert new
-    cur.execute("SELECT id FROM style_master WHERE ean=?", (ean,))
-    row = cur.fetchone()
-    if row:
-        cur.execute(
-            "UPDATE style_master SET style_no=?, buyer=? WHERE ean=?",
-            (style, buyer, ean),
-        )
-    else:
-        cur.execute(
-            "INSERT INTO style_master (ean, style_no, buyer) VALUES (?, ?, ?)",
-            (ean, style, buyer),
-        )
-
-    conn.commit()
-    conn.close()
+    with get_db_session() as session:
+        # If same EAN exists, update it; else insert new
+        style_master = session.query(StyleMaster).filter_by(ean=ean).first()
+        if style_master:
+            style_master.style_no = style
+            style_master.buyer = buyer
+        else:
+            style_master = StyleMaster(ean=ean, style_no=style, buyer=buyer)
+            session.add(style_master)
+        # commit happens automatically via context manager
+    
     return redirect("/style-master")
 
 
 @app.route("/delete_style/<int:id>")
 def delete_style(id):
-    conn = get_po_db_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM style_master WHERE id=?", (id,))
-    conn.commit()
-    conn.close()
+    """Delete style_master by id"""
+    with get_db_session() as session:
+        style_master = session.query(StyleMaster).filter_by(id=id).first()
+        if style_master:
+            session.delete(style_master)
+        # commit happens automatically via context manager
     return redirect("/style-master")
 
 @app.route("/refresh_styles")
 def refresh_styles():
-    conn = get_po_db_connection()
-    cur = conn.cursor()
-
-    # Get all PO rows
-    cur.execute("SELECT id, ean FROM po_items")
-    rows = cur.fetchall()
-
-    for r in rows:
-        style_no, buyer = get_style_and_buyer_from_db(r["ean"])
-        cur.execute("""
-            UPDATE po_items
-            SET style_no=?, buyer=?
-            WHERE id=?
-        """, (style_no, buyer, r["id"]))
-
-    conn.commit()
-    conn.close()
-
+    """Refresh style_no and buyer in po_items from style_master using JOIN"""
+    with get_db_session() as session:
+        # Use JOIN to update po_items with style_master data
+        # This is more efficient than individual lookups
+        po_items = session.query(POItem).all()
+        for po_item in po_items:
+            if po_item.ean:
+                # Get style_master via relationship or direct query
+                style_master = session.query(StyleMaster).filter_by(ean=po_item.ean).first()
+                if style_master:
+                    po_item.style_no = style_master.style_no or ""
+                    po_item.buyer = style_master.buyer or ""
+        # commit happens automatically via context manager
+    
     return redirect("/dashboard")
 
 
@@ -334,87 +298,83 @@ def upload_file():
         files = request.files.getlist("pdf_files")
         extracted_data = []
 
-        conn = get_po_db_connection()
-        cur = conn.cursor()
+        with get_db_session() as session:
+            for pdf in files:
+                if not pdf.filename:
+                    continue
 
-        for pdf in files:
-            if not pdf.filename:
-                continue
+                filepath = os.path.join(UPLOAD_FOLDER, pdf.filename)
+                pdf.save(filepath)
 
-            filepath = os.path.join(UPLOAD_FOLDER, pdf.filename)
-            pdf.save(filepath)
+                with fitz.open(filepath) as doc:
+                    text = "".join(page.get_text("text") for page in doc)
 
-            with fitz.open(filepath) as doc:
-                text = "".join(page.get_text("text") for page in doc)
+                rows = extract_items(text, pdf.filename)
+                extracted_data.extend(rows)
 
-            rows = extract_items(text, pdf.filename)
-            extracted_data.extend(rows)
+                for r in rows:
+                    # Extracted from PDF via extractor
+                    original_delv = r["Delivery Date"]
+                    po_no = r["PO #"]
+                    po_date = r["PO Date"]
+                    loc = r["Location"]
+                    ean = r["EAN NO"]
+                    desc = r["Article Description"]
+                    caselot_raw = r["CaseLot"]
+                    qty_raw = r["Quantity"]
+                    fname = r["Filename"]
 
-            for r in rows:
-                # Extracted from PDF via extractor
-                original_delv = r["Delivery Date"]
-                po_no = r["PO #"]
-                po_date = r["PO Date"]
-                loc = r["Location"]
-                ean = r["EAN NO"]
-                desc = r["Article Description"]
-                caselot_raw = r["CaseLot"]
-                qty_raw = r["Quantity"]
-                fname = r["Filename"]
+                    # Delivery date -4 days (as per your logic)
+                    delv_adjusted = calc_delivery_minus_4(original_delv)
 
-                # Delivery date -4 days (as per your logic)
-                delv_adjusted = calc_delivery_minus_4(original_delv)
+                    # Convert int
+                    try:
+                        caselot_int = int(caselot_raw)
+                    except Exception:
+                        caselot_int = 0
 
-                # Convert int
-                try:
-                    caselot_int = int(caselot_raw)
-                except Exception:
-                    caselot_int = 0
+                    try:
+                        qty_int = int(qty_raw)
+                    except Exception:
+                        qty_int = 0
 
-                try:
-                    qty_int = int(qty_raw)
-                except Exception:
-                    qty_int = 0
+                    # Derived fields - Get from style_master using JOIN (via get_style_and_buyer_from_db)
+                    style_no, buyer = get_style_and_buyer_from_db(ean)
+                    delv_month = calc_delivery_month(delv_adjusted)
+                    no_boxes = calc_no_of_boxes(caselot_int, qty_int)
+                    ex_fty = calc_ex_factory(loc, delv_adjusted)
+                    balance = qty_int
 
-                # Derived fields
-                style_no, buyer = get_style_and_buyer_from_db(ean)
-                delv_month = calc_delivery_month(delv_adjusted)
-                no_boxes = calc_no_of_boxes(caselot_int, qty_int)
-                ex_fty = calc_ex_factory(loc, delv_adjusted)
-                balance = qty_int
+                    row = {
+                        "filename": fname,
+                        "po_number": po_no,
+                        "po_date": po_date,
+                        "style_no": style_no,
+                        "ocn": "",          # you can fill later in dashboard
+                        "buyer": buyer,
+                        "delivery_date": delv_adjusted,
+                        "delivery_month": delv_month,
+                        "location": loc,
+                        "ean": ean,
+                        "description": desc,
+                        "caselot": caselot_int,
+                        "quantity": qty_int,
+                        "no_of_boxes": no_boxes,
+                        "factory": "",
+                        "ex_factory_date": ex_fty,
+                        "factory_remarks": "",
+                        "dispatched_box": 0,
+                        "dispatched_qty": 0,
+                        "balance": balance,
+                        "status": "Pending",
+                        "dispatch_date": "",
+                        "transporter": "",
+                        "grn_date": "",
+                        "grn_status": "",
+                    }
 
-                row = {
-                    "filename": fname,
-                    "po_number": po_no,
-                    "po_date": po_date,
-                    "style_no": style_no,
-                    "ocn": "",          # you can fill later in dashboard
-                    "buyer": buyer,
-                    "delivery_date": delv_adjusted,
-                    "delivery_month": delv_month,
-                    "location": loc,
-                    "ean": ean,
-                    "description": desc,
-                    "caselot": caselot_int,
-                    "quantity": qty_int,
-                    "no_of_boxes": no_boxes,
-                    "factory": "",
-                    "ex_factory_date": ex_fty,
-                    "factory_remarks": "",
-                    "dispatched_box": 0,
-                    "dispatched_qty": 0,
-                    "balance": balance,
-                    "status": "Pending",
-                    "dispatch_date": "",
-                    "transporter": "",
-                    "grn_date": "",
-                    "grn_status": "",
-                }
-
-                upsert_po_item(cur, row)
-
-        conn.commit()
-        conn.close()
+                    upsert_po_item(session, row)
+            # commit happens automatically via context manager
 
         return render_template("results.html", data=extracted_data)
 
@@ -423,48 +383,53 @@ def upload_file():
 
 @app.route("/dashboard")
 def dashboard():
-    conn = get_po_db_connection() 
-    cur = conn.cursor()
-    
-    # FIX for Issue 2: Ensure sorting by date, pushing empty/invalid dates to the bottom.
-    cur.execute("""
-        SELECT * FROM po_items 
-        ORDER BY 
-            -- 1. Sort by Status Priority (0=Pending, 1=Cancelled, 2=Dispatched)
-            CASE 
-                WHEN status = 'Dispatched' THEN 2
-                WHEN status = 'Cancelled' THEN 1
-                ELSE 0 
-            END,
+    """Dashboard with JOIN query: SELECT * FROM po_items JOIN style_master ON po_items.ean = style_master.ean"""
+    with get_db_session() as session:
+        # Use JOIN to get po_items with style_master data
+        # This is the proper way: SELECT * FROM po_items JOIN style_master ON po_items.ean = style_master.ean
+        query = session.query(POItem, StyleMaster).outerjoin(
+            StyleMaster, POItem.ean == StyleMaster.ean
+        )
+        
+        # Sort by status priority, then ex_factory_date
+        status_order = case(
+            (POItem.status == 'Dispatched', 2),
+            (POItem.status == 'Cancelled', 1),
+            else_=0
+        )
+        
+        # Handle date sorting (DD.MM.YYYY format)
+        # For PostgreSQL, we can use TO_DATE; for SQLite, use string manipulation
+        query = query.order_by(
+            status_order,
+            case(
+                (or_(POItem.ex_factory_date == None, POItem.ex_factory_date == ''), 1),
+                else_=0
+            ),
+            POItem.ex_factory_date.asc(),
+            POItem.id.desc()
+        )
+        
+        results = query.all()
+        
+        processed = []
+        for po_item, style_master in results:
+            d = po_item.to_dict()
             
-            -- 2. Push null/empty dates to the bottom of their group
-            CASE 
-                WHEN ex_factory_date IS NULL OR ex_factory_date = '' THEN 1
-                ELSE 0 
-            END,
+            # Override with style_master data if available (from JOIN)
+            if style_master:
+                d['style_no'] = style_master.style_no or d.get('style_no', '')
+                d['buyer'] = style_master.buyer or d.get('buyer', '')
             
-            -- 3. CRITICAL FIX: Sort the DD.MM.YYYY date chronologically (YYYY-MM-DD)
-            SUBSTR(ex_factory_date, 7, 4) || SUBSTR(ex_factory_date, 4, 2) || SUBSTR(ex_factory_date, 1, 2) ASC,  
-            
-            id DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+            d["remarks"] = d.get("factory_remarks", "")
 
-    processed = []
+            # Server-side check for row highlight
+            if d.get("status") == "Dispatched":
+                d["ex_factory_flag"] = ""  
+            else:
+                d["ex_factory_flag"] = calculate_exfactory_flag(d.get("ex_factory_date", ""))
 
-    for r in rows:
-        d = dict(r)
-
-        d["remarks"] = d.get("factory_remarks", "")
-
-        # FIX for Issue 3 (Part 2: Server-side check for row highlight)
-        if d.get("status") == "Dispatched":
-            d["ex_factory_flag"] = ""  
-        else:
-            d["ex_factory_flag"] = calculate_exfactory_flag(d.get("ex_factory_date", ""))
-
-        processed.append(d)
+            processed.append(d)
 
     return render_template(
         "dashboard.html",
@@ -477,13 +442,23 @@ def dashboard():
 
 @app.route("/download_excel")
 def download_excel():
-    conn = get_po_db_connection()
-    
-    # 1. Fetch data into a pandas DataFrame
-    # Fetch all data from po_items table
-    df = pd.read_sql_query("SELECT * FROM po_items", conn)
-    
-    conn.close()
+    """Download Excel with JOIN: SELECT * FROM po_items JOIN style_master ON po_items.ean = style_master.ean"""
+    with get_db_session() as session:
+        # Use JOIN query to get po_items with style_master data
+        query = session.query(POItem, StyleMaster).outerjoin(
+            StyleMaster, POItem.ean == StyleMaster.ean
+        )
+        
+        # Convert to list of dictionaries
+        data = []
+        for po_item, style_master in query.all():
+            row = po_item.to_dict()
+            if style_master:
+                row['style_no'] = style_master.style_no or row.get('style_no', '')
+                row['buyer'] = style_master.buyer or row.get('buyer', '')
+            data.append(row)
+        
+        df = pd.DataFrame(data)
     
     # 2. Prepare the Excel file in memory
     output = io.BytesIO()
@@ -536,72 +511,57 @@ def update_field():
     if field not in allowed:
         return jsonify({"ok": False})
 
-    conn = get_po_db_connection()
-    cur = conn.cursor()
-
-    db_field = "factory_remarks" if field == "remarks" else field
-
-    # ---------- 1️⃣ DISPATCHED BOX → AUTO CALCULATE QTY + BALANCE ----------
-    # FIX for Issue 5: Calculation and JSON response verified.
-    if field == "dispatched_box":
-        try:
-            dbox = int(value)
-        except Exception:
-            dbox = 0
-
-        cur.execute("SELECT caselot, quantity FROM po_items WHERE id=?", (row_id,))
-        row = cur.fetchone()
+    with get_db_session() as session:
+        po_item = session.query(POItem).filter_by(id=row_id).first()
         
-        if not row:
-            conn.close()
+        if not po_item:
             return jsonify({"ok": False, "error": "Row not found"})
 
-        caselot = row["caselot"] or 0
-        qty = row["quantity"] or 0
+        # ---------- 1️⃣ DISPATCHED BOX → AUTO CALCULATE QTY + BALANCE ----------
+        if field == "dispatched_box":
+            try:
+                dbox = int(value)
+            except Exception:
+                dbox = 0
 
-        dispatched_qty = dbox * caselot
-        balance = qty - dispatched_qty
+            caselot = po_item.caselot or 0
+            qty = po_item.quantity or 0
 
-        cur.execute(
-            """
-            UPDATE po_items
-            SET dispatched_box = ?, dispatched_qty = ?, balance = ?
-            WHERE id = ?
-            """,
-            (dbox, dispatched_qty, balance, row_id),
-        )
+            dispatched_qty = dbox * caselot
+            balance = qty - dispatched_qty
 
-        conn.commit()
-        conn.close()
-        # Ensure the response contains the new calculated values
-        return jsonify({"ok": True, "dispatched_qty": dispatched_qty, "balance": balance})
+            po_item.dispatched_box = dbox
+            po_item.dispatched_qty = dispatched_qty
+            po_item.balance = balance
+            
+            # commit happens automatically via context manager
+            return jsonify({"ok": True, "dispatched_qty": dispatched_qty, "balance": balance})
 
-    # ---------- 2️⃣ GRN DATE → AUTO SET GRN STATUS ----------
-    # FIX for Issue 6: GRN Status update and JSON response verified.
-    if field == "grn_date":
-        new_status = "Cleared" if value else "Pending"
+        # ---------- 2️⃣ GRN DATE → AUTO SET GRN STATUS ----------
+        if field == "grn_date":
+            new_status = "Cleared" if value else "Pending"
+            po_item.grn_date = value
+            po_item.grn_status = new_status
+            
+            # commit happens automatically via context manager
+            return jsonify({"ok": True, "new_grn_status": new_status})
+
+        # ---------- 3️⃣ NORMAL FIELD UPDATE ----------
+        # Map field names
+        if field == "remarks":
+            po_item.factory_remarks = value
+        else:
+            setattr(po_item, field, value)
         
-        cur.execute(
-            """
-            UPDATE po_items SET grn_date=?, grn_status=? WHERE id=?
-            """, 
-            (value, new_status, row_id)
-        )
-
-        conn.commit()
-        conn.close()
-        # Ensure the response contains the new status
-        return jsonify({"ok": True, "new_grn_status": new_status})
-
-    # ---------- 3️⃣ NORMAL FIELD UPDATE ----------
-    # This also handles status, dispatch_date, transporter, factory etc.
-    cur.execute(f"UPDATE po_items SET {db_field}=? WHERE id=?", (value, row_id))
-    conn.commit()
-    conn.close()
+        # commit happens automatically via context manager
 
     return jsonify({"ok": True})
 
 # ---------------- ENTRY POINT ---------------- #
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Production: Use environment PORT, default to 5001 (5000 is often used by AirPlay on macOS)
+    # Development: Can still use debug mode
+    port = int(os.environ.get('PORT', 5001))
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(host='0.0.0.0', port=port, debug=debug)

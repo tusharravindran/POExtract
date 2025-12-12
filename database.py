@@ -1,94 +1,255 @@
-import sqlite3
+"""
+Production Database Module - PostgreSQL with SQLAlchemy
+Single database with two tables connected by foreign key (EAN)
+"""
+import os
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Index, func
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session, relationship
+from sqlalchemy.pool import QueuePool
+from contextlib import contextmanager
 
-# --- Database File Definitions ---
-# The main PO data, which can be safely deleted/reset
-DB_NAME_PO = "po_data.db"
-# The permanent style master data
-DB_NAME_MASTER = "style_master.db"
+# Load environment variables from .env file
+load_dotenv()
 
+Base = declarative_base()
 
-# --- Connection Helper Functions ---
+# ==================== CONFIGURATION ====================
+# Load from environment variables (fallback to SQLite for development)
+DB_TYPE = os.getenv('DB_TYPE', 'sqlite')  # Change to 'postgresql' for production
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'poextract_db')
+DB_USER = os.getenv('DB_USER', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
 
-# NOTE: The original function 'get_db_connection' is renamed to match the PO data file
-def get_po_db_connection():
-    """Connects to the main PO data DB (po_data.db)."""
-    conn = sqlite3.connect(DB_NAME_PO)
-    conn.row_factory = sqlite3.Row
-    return conn
+# Build connection string
+if DB_TYPE == 'postgresql':
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+elif DB_TYPE == 'sqlite':
+    # SQLite fallback for development
+    DATABASE_URL = "sqlite:///poextract.db"
+else:
+    raise ValueError(f"Unsupported DB_TYPE: {DB_TYPE}")
+
+# ==================== ENGINE & SESSION ====================
+if DB_TYPE == 'postgresql':
+    engine = create_engine(
+        DATABASE_URL,
+        poolclass=QueuePool,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+        echo=False
+    )
+else:
+    # SQLite doesn't need connection pooling
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False
+    )
+
+SessionLocal = scoped_session(sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+))
+
+# ==================== MODELS ====================
+
+class StyleMaster(Base):
+    """
+    Style Master table - EAN to Style/Buyer mappings
+    id is PRIMARY KEY, ean is UNIQUE (used for foreign key relationship)
+    """
+    __tablename__ = 'style_master'
     
+    id = Column(Integer, primary_key=True, autoincrement=True)  # Standard ID as PK
+    ean = Column(String, unique=True, nullable=False, index=True)  # EAN is UNIQUE, used for FK
+    style_no = Column(String)
+    buyer = Column(String)
+    
+    # Relationship: One style_master can have many po_items
+    po_items = relationship("POItem", back_populates="style_master_ref", foreign_keys="POItem.ean")
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'ean': self.ean,
+            'style_no': self.style_no,
+            'buyer': self.buyer
+        }
+
+
+class POItem(Base):
+    """
+    Purchase Order Items table
+    Connected to style_master via EAN foreign key
+    """
+    __tablename__ = 'po_items'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Foreign Key to style_master (EAN links to style_master.ean)
+    ean = Column(String, ForeignKey('style_master.ean', ondelete='SET NULL'), nullable=True, index=True)
+    
+    # Relationship: Many po_items belong to one style_master
+    style_master_ref = relationship("StyleMaster", back_populates="po_items", foreign_keys=[ean])
+    
+    # File & PO Information
+    filename = Column(String)
+    po_number = Column(String, index=True)
+    po_date = Column(String)
+    
+    # Product Information (can be populated from style_master via JOIN)
+    style_no = Column(String, index=True)  # Denormalized for performance
+    ocn = Column(String)
+    buyer = Column(String, index=True)  # Denormalized for performance
+    description = Column(String)
+    
+    # Delivery Information
+    delivery_date = Column(String, index=True)
+    delivery_month = Column(String)
+    location = Column(String)
+    
+    # Quantity Information
+    caselot = Column(Integer)
+    quantity = Column(Integer)
+    no_of_boxes = Column(Integer)
+    
+    # Factory Information
+    factory = Column(String)
+    ex_factory_date = Column(String, index=True)
+    factory_remarks = Column(String)
+    
+    # Dispatch Information
+    dispatched_box = Column(Integer, default=0)
+    dispatched_qty = Column(Integer, default=0)
+    balance = Column(Integer, default=0)
+    status = Column(String, default='Pending', index=True)
+    dispatch_date = Column(String)
+    transporter = Column(String)
+    
+    # GRN Information
+    grn_date = Column(String)
+    grn_status = Column(String)
+    
+    # Metadata
+    is_revised = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # Composite indexes for performance
+    __table_args__ = (
+        Index('idx_po_ean', 'po_number', 'ean'),
+        Index('idx_status_exfactory', 'status', 'ex_factory_date'),
+        Index('idx_po_number_ean', 'po_number', 'ean'),  # For duplicate prevention
+    )
+    
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'filename': self.filename,
+            'po_number': self.po_number,
+            'po_date': self.po_date,
+            'style_no': self.style_no,
+            'ocn': self.ocn,
+            'buyer': self.buyer,
+            'delivery_date': self.delivery_date,
+            'delivery_month': self.delivery_month,
+            'location': self.location,
+            'ean': self.ean,
+            'description': self.description,
+            'caselot': self.caselot,
+            'quantity': self.quantity,
+            'no_of_boxes': self.no_of_boxes,
+            'factory': self.factory,
+            'ex_factory_date': self.ex_factory_date,
+            'factory_remarks': self.factory_remarks,
+            'dispatched_box': self.dispatched_box,
+            'dispatched_qty': self.dispatched_qty,
+            'balance': self.balance,
+            'status': self.status,
+            'dispatch_date': self.dispatch_date,
+            'transporter': self.transporter,
+            'grn_date': self.grn_date,
+            'grn_status': self.grn_status,
+            'is_revised': self.is_revised,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+# ==================== HELPER FUNCTIONS ====================
+
+@contextmanager
+def get_db_session():
+    """Context manager for database sessions with automatic cleanup"""
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_db():
+    """Get database session (for Flask integration)"""
+    return SessionLocal()
+
+
+# ==================== BACKWARD COMPATIBILITY ====================
+# These functions maintain compatibility with existing app.py code
+
+def get_po_db_connection():
+    """
+    Backward compatibility function.
+    Returns a session instead of raw connection.
+    """
+    return get_db()
+
+
 def get_master_db_connection():
-    """Connects to the permanent Style Master DB (style_master.db)."""
-    conn = sqlite3.connect(DB_NAME_MASTER)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """
+    Backward compatibility function.
+    Returns a session instead of raw connection.
+    Same as get_po_db_connection() since we use one database now.
+    """
+    return get_db()
 
 
-# --- Initialization Function ---
+def get_style_and_buyer_from_db(ean: str):
+    """
+    Returns (style_no, buyer) from style_master for a given EAN.
+    Uses JOIN query for efficiency.
+    """
+    with get_db_session() as session:
+        style = session.query(StyleMaster).filter_by(ean=ean).first()
+        if style:
+            return (style.style_no or "", style.buyer or "")
+        return "", ""
+
 
 def initialize_db():
-    # 1. Initialize STYLE MASTER DB (Permanent)
-    conn_m = get_master_db_connection()
-    cur_m = conn_m.cursor()
-    cur_m.execute("""
-        CREATE TABLE IF NOT EXISTS style_master (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ean      TEXT UNIQUE,
-            style_no TEXT,
-            buyer    TEXT
-        )
-    """)
-    conn_m.commit()
-    conn_m.close()
-
-    # 2. Initialize PO DATA DB (Resettable)
-    conn_p = get_po_db_connection()
-    cur_p = conn_p.cursor()
-
-    # FIX: Changed 'cur.execute' to 'cur_p.execute'
-    cur_p.execute("""
-        CREATE TABLE IF NOT EXISTS po_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            filename         TEXT,
-            po_number        TEXT,
-            po_date          TEXT,
-            style_no         TEXT,
-            ocn              TEXT,
-            buyer            TEXT,
-
-            delivery_date    TEXT,
-            delivery_month   TEXT,
-            location         TEXT,
-            ean              TEXT,
-            description      TEXT,
-            caselot          INTEGER,
-            quantity         INTEGER,
-            no_of_boxes      INTEGER,
-
-            factory          TEXT,
-            ex_factory_date  TEXT,
-            factory_remarks  TEXT,
-
-            dispatched_box   INTEGER,
-            dispatched_qty   INTEGER,
-            balance          INTEGER,
-            status           TEXT,
-            dispatch_date    TEXT,
-            transporter      TEXT,
-            grn_date         TEXT,
-            grn_status       TEXT,
-
-            is_revised       INTEGER DEFAULT 0,
-            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn_p.commit()
-    conn_p.close()
-    print("Databases initialized.")
+    """Create all tables if they don't exist"""
+    Base.metadata.create_all(bind=engine)
+    db_type_str = DB_TYPE.upper()
+    if DB_TYPE == 'postgresql':
+        print(f"✓ Database initialized: {db_type_str} at {DB_HOST}:{DB_PORT}/{DB_NAME}")
+    else:
+        print(f"✓ Database initialized: {db_type_str} (SQLite fallback)")
 
 
-# --- Run on Execution ---
-
+# ==================== EXAMPLE USAGE ====================
 if __name__ == "__main__":
+    # Initialize database
     initialize_db()
+    print("\n✓ Tables created:")
+    print("  - style_master: id (PRIMARY KEY), ean (UNIQUE)")
+    print("  - po_items: id (PRIMARY KEY), ean (FOREIGN KEY -> style_master.ean)")
+    print("\n✓ Foreign key relationship established:")
+    print("  po_items.ean -> style_master.ean (EAN links the tables)")
