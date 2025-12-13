@@ -38,6 +38,34 @@ def get_style_and_buyer_from_db(ean: str):
     return "", ""
 
 
+def ensure_ean_in_style_master(session, ean):
+    """
+    Ensure EAN exists in style_master table.
+    If EAN is invalid (N/A, empty) -> returns None
+    If EAN doesn't exist -> creates placeholder entry
+    Returns validated EAN or None
+    """
+    if not ean or ean.strip() == "" or ean.upper() == "N/A":
+        return None  # Set to NULL (foreign key allows NULL)
+    
+    ean = ean.strip()
+    
+    # Check if EAN exists in style_master
+    style_master = session.query(StyleMaster).filter_by(ean=ean).first()
+    
+    if not style_master:
+        # Create placeholder entry in style_master to satisfy foreign key
+        placeholder = StyleMaster(
+            ean=ean,
+            style_no=None,
+            buyer=None
+        )
+        session.add(placeholder)
+        session.flush()  # Flush to get the ID, but don't commit yet
+    
+    return ean
+
+
 def upsert_po_item(session, row):
     """
     Avoid duplicates in po_items using SQLAlchemy:
@@ -46,9 +74,19 @@ def upsert_po_item(session, row):
     - If exists and values changed -> UPDATE + is_revised=1
     - If exists and same -> do nothing
     """
+    # Validate and ensure EAN exists in style_master
+    original_ean = row.get("ean", "")
+    validated_ean = ensure_ean_in_style_master(session, original_ean)
+    
+    # Update row with validated EAN (None if invalid)
+    row["ean"] = validated_ean
+    
+    # Use validated_ean for query (handle None case)
+    query_ean = validated_ean if validated_ean else None
+    
     existing = session.query(POItem).filter_by(
         po_number=row["po_number"],
-        ean=row.get("ean", "")
+        ean=query_ean
     ).first()
     
     if not existing:
