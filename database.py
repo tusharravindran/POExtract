@@ -4,9 +4,9 @@ Single database with two tables connected by foreign key (EAN)
 """
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Index, func
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, scoped_session, relationship
+from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
 
@@ -75,128 +75,11 @@ SessionLocal = scoped_session(sessionmaker(
 ))
 
 # ==================== MODELS ====================
-
-class StyleMaster(Base):
-    """
-    Style Master table - EAN to Style/Buyer mappings
-    id is PRIMARY KEY, ean is UNIQUE (used for foreign key relationship)
-    """
-    __tablename__ = 'style_master'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)  # Standard ID as PK
-    ean = Column(String, unique=True, nullable=False, index=True)  # EAN is UNIQUE, used for FK
-    style_no = Column(String)
-    buyer = Column(String)
-    
-    # Relationship: One style_master can have many po_items
-    po_items = relationship("POItem", back_populates="style_master_ref", foreign_keys="POItem.ean")
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'ean': self.ean,
-            'style_no': self.style_no,
-            'buyer': self.buyer
-        }
-
-
-class POItem(Base):
-    """
-    Purchase Order Items table
-    Connected to style_master via EAN foreign key
-    """
-    __tablename__ = 'po_items'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    
-    # Foreign Key to style_master (EAN links to style_master.ean)
-    ean = Column(String, ForeignKey('style_master.ean', ondelete='SET NULL'), nullable=True, index=True)
-    
-    # Relationship: Many po_items belong to one style_master
-    style_master_ref = relationship("StyleMaster", back_populates="po_items", foreign_keys=[ean])
-    
-    # File & PO Information
-    filename = Column(String)
-    po_number = Column(String, index=True)
-    po_date = Column(String)
-    
-    # Product Information (can be populated from style_master via JOIN)
-    style_no = Column(String, index=True)  # Denormalized for performance
-    ocn = Column(String)
-    buyer = Column(String, index=True)  # Denormalized for performance
-    description = Column(String)
-    
-    # Delivery Information
-    delivery_date = Column(String, index=True)
-    delivery_month = Column(String)
-    location = Column(String)
-    
-    # Quantity Information
-    caselot = Column(Integer)
-    quantity = Column(Integer)
-    no_of_boxes = Column(Integer)
-    
-    # Factory Information
-    factory = Column(String)
-    ex_factory_date = Column(String, index=True)
-    factory_remarks = Column(String)
-    
-    # Dispatch Information
-    dispatched_box = Column(Integer, default=0)
-    dispatched_qty = Column(Integer, default=0)
-    balance = Column(Integer, default=0)
-    status = Column(String, default='Pending', index=True)
-    dispatch_date = Column(String)
-    transporter = Column(String)
-    
-    # GRN Information
-    grn_date = Column(String)
-    grn_status = Column(String)
-    
-    # Metadata
-    is_revised = Column(Boolean, default=False)
-    created_at = Column(DateTime, server_default=func.now())
-    
-    # Composite indexes for performance
-    __table_args__ = (
-        Index('idx_po_ean', 'po_number', 'ean'),
-        Index('idx_status_exfactory', 'status', 'ex_factory_date'),
-        Index('idx_po_number_ean', 'po_number', 'ean'),  # For duplicate prevention
-    )
-    
-    def to_dict(self):
-        """Convert to dictionary for JSON serialization"""
-        return {
-            'id': self.id,
-            'filename': self.filename,
-            'po_number': self.po_number,
-            'po_date': self.po_date,
-            'style_no': self.style_no,
-            'ocn': self.ocn,
-            'buyer': self.buyer,
-            'delivery_date': self.delivery_date,
-            'delivery_month': self.delivery_month,
-            'location': self.location,
-            'ean': self.ean,
-            'description': self.description,
-            'caselot': self.caselot,
-            'quantity': self.quantity,
-            'no_of_boxes': self.no_of_boxes,
-            'factory': self.factory,
-            'ex_factory_date': self.ex_factory_date,
-            'factory_remarks': self.factory_remarks,
-            'dispatched_box': self.dispatched_box,
-            'dispatched_qty': self.dispatched_qty,
-            'balance': self.balance,
-            'status': self.status,
-            'dispatch_date': self.dispatch_date,
-            'transporter': self.transporter,
-            'grn_date': self.grn_date,
-            'grn_status': self.grn_status,
-            'is_revised': self.is_revised,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-
+# Models are now defined in the models/ directory:
+# - models/user.py - User model
+# - models/po_item.py - POItem model  
+# - models/style_master.py - StyleMaster model
+# Import them to ensure they're registered with Base before initialize_db() is called
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -244,6 +127,7 @@ def get_style_and_buyer_from_db(ean: str):
     Returns (style_no, buyer) from style_master for a given EAN.
     Uses JOIN query for efficiency.
     """
+    from models.style_master import StyleMaster
     with get_db_session() as session:
         style = session.query(StyleMaster).filter_by(ean=ean).first()
         if style:
@@ -253,12 +137,22 @@ def get_style_and_buyer_from_db(ean: str):
 
 def initialize_db():
     """Create all tables if they don't exist"""
+    # Import all models to ensure they're registered with Base
+    # This must be done before create_all() is called
+    from models.user import User
+    from models.po_item import POItem
+    from models.style_master import StyleMaster
+    
+    # Create all tables (users, po_items, style_master)
     Base.metadata.create_all(bind=engine)
+    
     if DATABASE_URL and not DATABASE_URL.startswith('sqlite'):
         # PostgreSQL (from DATABASE_URL or individual components)
         print(f"✓ Database initialized: PostgreSQL")
+        print(f"  Tables: users, po_items, style_master")
     else:
         print(f"✓ Database initialized: SQLite (fallback)")
+        print(f"  Tables: users, po_items, style_master")
 
 
 # ==================== EXAMPLE USAGE ====================

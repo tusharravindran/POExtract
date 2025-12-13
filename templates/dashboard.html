@@ -1,25 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8" />
-    <title>PO Dashboard</title>
+{% block title %}PO Dashboard - PO Extract{% endblock %}
 
-    <style>
-        /* ==================== STYLES (Keep existing styles for colors and widths) ==================== */
+{% block extra_css %}
+<style>
+        /* ==================== DASHBOARD STYLES ==================== */
         body {
             font-family: Arial, sans-serif;
             background-color: #E9F4FF;
-            margin: 0;
-            padding: 20px;
         }
 
-        h1 { margin-bottom: 10px; }
-
-        a {
-            font-size: 18px;
-            margin-right: 20px;
-        }
+        .dashboard-content h1 { margin-bottom: 10px; }
 
         .table-container {
             overflow-x: auto;
@@ -170,18 +161,16 @@ tbody input {
     max-width: 95%;
     box-sizing: border-box;
 }
+</style>
+{% endblock %}
 
-
-    </style>
-
-    <script>
-        // ==================== JAVASCRIPT ====================
-
+{% block extra_js %}
+<script>
         function updateField(id, field, value, element) {
             element.style.outline = '2px solid #0074D9'; 
             setTimeout(() => { element.style.outline = 'none'; }, 500);
 
-            fetch("/update_field", {
+            fetch("{{ url_for('po.update_field') }}", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({ row_id: id, field: field, value: value }),
@@ -328,23 +317,17 @@ function initializeColumnFilters() {
         select.addEventListener('change', filterTable);
     });
 });
+</script>
+{% endblock %}
 
-    </script>
-
-
-</head>
-
-<body>
-
+{% block content %}
+<div class="dashboard-content">
     <h1>PO Dashboard</h1>
-
-    <a href="/">Home</a>
-    <a href="/upload">Upload New PO</a>
-    <a href="/style-master">Style Master</a>
     
-    <a href="/download_excel" style="font-size:16px; color:blue; margin-left: 20px;">Download Excel Report</a>
-    <a href="/refresh_styles" style="font-size:16px; color:green; margin-left: 10px;">Refresh Style/Buyer</a>
-    <br><br>
+    <div style="margin-bottom: 15px;">
+        <a href="{{ url_for('po.download_excel') }}" style="font-size:16px; color:blue; margin-right: 20px;">Download Excel Report</a>
+        <a href="{{ url_for('style_master.refresh_styles') }}" style="font-size:16px; color:green;">Refresh Style/Buyer</a>
+    </div>
 
       <div class="table-container">
 
@@ -548,7 +531,6 @@ function initializeColumnFilters() {
             </tbody>
 
         </table>
-    </div> 
-
-</body>
-</html>
+    </div>
+</div>
+{% endblock %}
