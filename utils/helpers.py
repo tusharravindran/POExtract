@@ -57,20 +57,48 @@ def calc_ex_factory(location: str, delv_date_str: str) -> str:
     return d.strftime("%d.%m.%Y")
 
 
+def parse_exfactory_date_for_sort(date_str):
+    """
+    Parse Ex-Factory Date string (dd.mm.yyyy) to datetime object for sorting.
+    Returns datetime object or None if parsing fails.
+    """
+    if not date_str or date_str.strip() == "":
+        return None
+    try:
+        return datetime.strptime(date_str.strip(), "%d.%m.%Y")
+    except Exception:
+        return None
+
+
 def calculate_exfactory_flag(date_str):
-    """Returns: 'overdue' / 'due' / '' based on ex-factory date."""
-    if not date_str:
+    """
+    Returns: 'overdue' / 'due-soon' / '' based on ex-factory date.
+    - 'overdue': Today's date → RED
+    - 'due-soon': Within 3 days from today (1, 2, or 3 days in the future) → YELLOW
+    - '': All other dates (past or more than 3 days future) → Normal
+    """
+    if not date_str or date_str.strip() == "":
         return ""
     try:
-        d = datetime.strptime(date_str, "%d.%m.%Y").date()
+        # Parse date in format dd.mm.yyyy
+        d = datetime.strptime(date_str.strip(), "%d.%m.%Y").date()
         today = datetime.today().date()
 
-        if today >= d:
-            return "overdue"       # red
-        days_left = (d - today).days
-        if days_left <= 3:
-            return "due"           # yellow
+        # Calculate days difference (positive = future, negative = past)
+        days_diff = (d - today).days
+        
+        # Today's date → RED (overdue)
+        if days_diff == 0:
+            return "overdue"
+        
+        # Within 3 days from today (1, 2, or 3 days in the future) → YELLOW (due-soon)
+        if 1 <= days_diff <= 3:
+            return "due-soon"
+        
+        # All other dates (past or more than 3 days future) → Normal (no highlighting)
         return ""
-    except Exception:
+    except Exception as e:
+        # If date parsing fails, return empty (no highlighting)
+        print(f"Error parsing date '{date_str}': {e}")
         return ""
 

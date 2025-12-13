@@ -1,13 +1,14 @@
 """
 Dashboard Routes - Main dashboard view
 """
+from datetime import datetime
 from flask import Blueprint, render_template
 from sqlalchemy import case, func, or_
 from database import get_db_session
 from models.po_item import POItem
 from models.style_master import StyleMaster
 from auth.decorators import login_required
-from utils.helpers import calculate_exfactory_flag
+from utils.helpers import calculate_exfactory_flag, parse_exfactory_date_for_sort
 from config import FACTORIES, TRANSPORTERS
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -41,6 +42,22 @@ def dashboard():
             d['exfactory_flag'] = calculate_exfactory_flag(d.get("ex_factory_date", ""))
             
             processed.append(d)
+        
+        # Sort by Status (Pending first, Dispatched last), then Ex-Factory Date (earliest first), then OCN
+        def get_status_priority(status):
+            """Returns priority: 0 for Pending, 1 for others, 2 for Dispatched"""
+            if status == "Pending":
+                return 0
+            elif status == "Dispatched":
+                return 2
+            else:
+                return 1  # Cancelled and other statuses
+        
+        processed.sort(key=lambda x: (
+            get_status_priority(x.get("status", "Pending")),  # Status priority first
+            parse_exfactory_date_for_sort(x.get("ex_factory_date", "")) or datetime.max,  # Then Ex-Factory Date
+            x.get("ocn", "") or ""  # Then OCN
+        ))
     
     return render_template(
         "dashboard.html",

@@ -6,3 +6,4 @@ from .helpers import get_current_user
 
 __all__ = ['login_required', 'get_current_user']
 
+

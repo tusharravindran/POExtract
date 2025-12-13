@@ -77,3 +77,4 @@ if __name__ == '__main__':
     success = reset_password(username=args.username, password=args.password)
     sys.exit(0 if success else 1)
 
+

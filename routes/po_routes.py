@@ -249,7 +249,7 @@ def download_excel():
 def update_field():
     """Update a field in po_items"""
     data = request.get_json()
-    po_id = data.get("id")
+    po_id = data.get("id") or data.get("row_id")  # Accept both 'id' and 'row_id'
     field = data.get("field")
     value = data.get("value")
     
@@ -262,7 +262,7 @@ def update_field():
             return jsonify({"error": "PO item not found"}), 404
         
         # Map field names
-        if field == "remarks":
+        if field == "remarks" or field == "factory_remarks":
             po_item.factory_remarks = value
         else:
             setattr(po_item, field, value)

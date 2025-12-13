@@ -8,3 +8,4 @@ from .style_master_routes import style_master_bp
 
 __all__ = ['auth_bp', 'po_bp', 'dashboard_bp', 'style_master_bp']
 
+

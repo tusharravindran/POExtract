@@ -32,3 +32,4 @@ class StyleMaster(Base):
     def __repr__(self):
         return f'<StyleMaster {self.ean}>'
 
+
