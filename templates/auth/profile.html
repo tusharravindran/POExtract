@@ -71,10 +71,22 @@
     
     <div class="info-section">
         <p><strong>Username:</strong> {{ user.username }}</p>
-        <p><strong>Role:</strong> {{ user.role }}</p>
+        <p><strong>Role:</strong> 
+            <span style="padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; 
+                         {% if user.role == 'admin' %}background: #667eea; color: white;{% else %}background: #6c757d; color: white;{% endif %}">
+                {{ user.role|upper }}
+            </span>
+        </p>
         <p><strong>Account Created:</strong> {{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'N/A' }}</p>
         {% if user.last_login %}
         <p><strong>Last Login:</strong> {{ user.last_login.strftime('%Y-%m-%d %H:%M') }}</p>
+        {% endif %}
+        {% if user.role == 'admin' %}
+        <p style="margin-top: 15px;">
+            <a href="{{ url_for('auth.admin_users') }}" style="padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: 600;">
+                Manage Users →
+            </a>
+        </p>
         {% endif %}
     </div>
     

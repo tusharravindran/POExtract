@@ -29,11 +29,15 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
+            from flask import flash
+            flash('Please log in to access this page.', 'warning')
             return redirect(url_for('auth.login'))
         
         user = get_current_user()
         if not user or user.role != 'admin':
-            return redirect(url_for('dashboard')), 403
+            from flask import flash
+            flash('You do not have permission to access this page.', 'danger')
+            return redirect(url_for('dashboard.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from database import get_db_session
 from models.user import User
 from auth.helpers import login_user, logout_user, get_current_user
-from auth.decorators import login_required
+from auth.decorators import login_required, admin_required
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
@@ -199,4 +199,95 @@ def extend_session():
     session.permanent = True
     session.modified = True
     return jsonify({'success': True, 'message': 'Session extended'})
+
+
+@auth_bp.route('/admin/users')
+@login_required
+@admin_required
+def admin_users():
+    """Admin page to view all users"""
+    try:
+        with get_db_session() as db_session:
+            # Get all users
+            users = db_session.query(User).order_by(User.created_at.desc()).all()
+            
+            # Pre-load all attributes and expunge to avoid DetachedInstanceError
+            user_list = []
+            for user in users:
+                _ = user.username
+                _ = user.email
+                _ = user.full_name
+                _ = user.phone
+                _ = user.company
+                _ = user.role
+                _ = user.is_active
+                _ = user.is_verified
+                _ = user.created_at
+                _ = user.last_login
+                db_session.expunge(user)
+                user_list.append(user)
+        
+        return render_template('auth/admin_users.html', users=user_list)
+    except Exception as e:
+        flash(f'Error loading users: {str(e)}', 'error')
+        return redirect(url_for('dashboard.dashboard'))
+
+
+@auth_bp.route('/admin/user/<int:user_id>/toggle_active', methods=['POST'])
+@login_required
+@admin_required
+def toggle_user_active(user_id):
+    """Toggle user active status (admin only)"""
+    try:
+        with get_db_session() as db_session:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Prevent admin from deactivating themselves
+            if user.id == session.get('user_id'):
+                return jsonify({'error': 'You cannot deactivate your own account'}), 400
+            
+            user.is_active = not user.is_active
+            db_session.commit()
+            
+            status = 'activated' if user.is_active else 'deactivated'
+            return jsonify({
+                'success': True,
+                'message': f'User {status} successfully',
+                'is_active': user.is_active
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@auth_bp.route('/admin/user/<int:user_id>/change_role', methods=['POST'])
+@login_required
+@admin_required
+def change_user_role(user_id):
+    """Change user role (admin only)"""
+    try:
+        new_role = request.json.get('role')
+        if new_role not in ['user', 'admin']:
+            return jsonify({'error': 'Invalid role'}), 400
+        
+        with get_db_session() as db_session:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Prevent admin from changing their own role
+            if user.id == session.get('user_id'):
+                return jsonify({'error': 'You cannot change your own role'}), 400
+            
+            user.role = new_role
+            db_session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'User role changed to {new_role}',
+                'role': new_role
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 

@@ -187,6 +187,9 @@
                 <a href="{{ url_for('dashboard.dashboard') }}" class="navbar-link">Dashboard</a>
                 <a href="{{ url_for('po.home') }}" class="navbar-link">Upload</a>
                 <a href="{{ url_for('style_master.style_master') }}" class="navbar-link">Style Master</a>
+                {% if session.get('user_role') == 'admin' %}
+                <a href="{{ url_for('auth.admin_users') }}" class="navbar-link">Admin</a>
+                {% endif %}
                 <a href="{{ url_for('auth.profile') }}" class="navbar-link">Profile</a>
                 <div class="navbar-user">
                     <div class="user-info">
