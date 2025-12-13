@@ -4,7 +4,9 @@ This script tests if the app can connect and initialize tables
 """
 import os
 from dotenv import load_dotenv
-from database import initialize_db, get_db_session, StyleMaster, POItem
+from database import initialize_db, get_db_session
+from models.style_master import StyleMaster
+from models.po_item import POItem
 
 load_dotenv()
 
