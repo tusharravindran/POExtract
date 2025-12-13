@@ -1,4 +1,4 @@
-# PO Extract Application
+# PO Extract Applications
 
 A Flask web application for extracting and managing Purchase Order (PO) data from PDF files with user authentication and role-based access control.
 
