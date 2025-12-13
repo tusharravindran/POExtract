@@ -125,6 +125,13 @@
     .btn-change-role:hover {
         background: #138496;
     }
+    .btn-toggle-verified {
+        background: #28a745;
+        color: white;
+    }
+    .btn-toggle-verified:hover {
+        background: #218838;
+    }
     .empty-state {
         text-align: center;
         padding: 40px;
@@ -201,7 +208,7 @@
                     </span>
                 </td>
                 <td>
-                    <span class="badge {% if user.is_verified %}badge-verified{% else %}badge-unverified{% endif %}">
+                    <span class="badge {% if user.is_verified %}badge-verified{% else %}badge-unverified{% endif %}" id="verified-{{ user.id }}">
                         {% if user.is_verified %}Verified{% else %}Unverified{% endif %}
                     </span>
                 </td>
@@ -213,6 +220,11 @@
                                 onclick="toggleActive({{ user.id }})"
                                 {% if user.id == session.user_id %}disabled title="Cannot modify your own account"{% endif %}>
                             {% if user.is_active %}Deactivate{% else %}Activate{% endif %}
+                        </button>
+                        <button class="btn-action btn-toggle-verified" 
+                                onclick="toggleVerified({{ user.id }})"
+                                title="{% if user.is_verified %}Unverify user{% else %}Verify user{% endif %}">
+                            {% if user.is_verified %}Unverify{% else %}Verify{% endif %}
                         </button>
                         <select class="role-select" 
                                 onchange="changeRole({{ user.id }}, this.value)"
@@ -306,6 +318,51 @@
             console.error('Error:', error);
             alert('Error changing user role');
             location.reload();
+        });
+    }
+    
+    function toggleVerified(userId) {
+        const button = event.target;
+        const currentText = button.textContent;
+        const action = currentText === 'Verify' ? 'verify' : 'unverify';
+        
+        if (!confirm(`Are you sure you want to ${action} this user?`)) {
+            return;
+        }
+        
+        fetch(`{{ url_for('auth.toggle_user_verified', user_id=0) }}`.replace('0', userId), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the verified badge
+                const verifiedBadge = document.getElementById(`verified-${userId}`);
+                
+                if (data.is_verified) {
+                    verifiedBadge.textContent = 'Verified';
+                    verifiedBadge.className = 'badge badge-verified';
+                    button.textContent = 'Unverify';
+                    button.title = 'Unverify user';
+                } else {
+                    verifiedBadge.textContent = 'Unverified';
+                    verifiedBadge.className = 'badge badge-unverified';
+                    button.textContent = 'Verify';
+                    button.title = 'Verify user';
+                }
+                
+                alert(data.message);
+            } else {
+                alert('Error: ' + (data.error || 'Failed to update verification status'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating verification status');
         });
     }
 </script>

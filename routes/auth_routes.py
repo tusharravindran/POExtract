@@ -291,3 +291,27 @@ def change_user_role(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@auth_bp.route('/admin/user/<int:user_id>/toggle_verified', methods=['POST'])
+@login_required
+@admin_required
+def toggle_user_verified(user_id):
+    """Toggle user verification status (admin only)"""
+    try:
+        with get_db_session() as db_session:
+            user = db_session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            user.is_verified = not user.is_verified
+            db_session.commit()
+            
+            status = 'verified' if user.is_verified else 'unverified'
+            return jsonify({
+                'success': True,
+                'message': f'User {status} successfully',
+                'is_verified': user.is_verified
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
