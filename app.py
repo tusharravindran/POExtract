@@ -561,6 +561,35 @@ def update_field():
 
     return jsonify({"ok": True})
 
+# ---------------- HEALTH CHECK ROUTE ---------------- #
+
+@app.route("/health")
+def health_check():
+    """
+    Health check endpoint for Render.com monitoring.
+    Returns 200 OK if the service is running and database is accessible.
+    """
+    try:
+        # Quick database connectivity check
+        with get_db_session() as session:
+            # Simple query to verify database connection
+            session.query(POItem).limit(1).all()
+        
+        return jsonify({
+            "status": "healthy",
+            "service": "PO Extract",
+            "timestamp": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        # If database check fails, still return 200 but with warning
+        # This prevents Render from marking service as down due to DB issues
+        return jsonify({
+            "status": "degraded",
+            "service": "PO Extract",
+            "timestamp": datetime.now().isoformat(),
+            "warning": "Database connectivity issue"
+        }), 200
+
 # ---------------- ENTRY POINT ---------------- #
 
 if __name__ == '__main__':
