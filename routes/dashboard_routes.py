@@ -43,7 +43,7 @@ def dashboard():
             
             processed.append(d)
         
-        # Sort by Status (Pending first, Dispatched last), then Ex-Factory Date (earliest first), then OCN
+        # Sort by Ex-Factory Date (earliest first), then Status (Pending first, Dispatched last), then OCN
         def get_status_priority(status):
             """Returns priority: 0 for Pending, 1 for others, 2 for Dispatched"""
             if status == "Pending":
@@ -54,8 +54,8 @@ def dashboard():
                 return 1  # Cancelled and other statuses
         
         processed.sort(key=lambda x: (
-            get_status_priority(x.get("status", "Pending")),  # Status priority first
-            parse_exfactory_date_for_sort(x.get("ex_factory_date", "")) or datetime.max,  # Then Ex-Factory Date
+            parse_exfactory_date_for_sort(x.get("ex_factory_date", "")) or datetime.max,  # Ex-Factory Date first (earliest first)
+            get_status_priority(x.get("status", "Pending")),  # Then Status priority
             x.get("ocn", "") or ""  # Then OCN
         ))
     

@@ -261,13 +261,41 @@ def update_field():
         if not po_item:
             return jsonify({"error": "PO item not found"}), 404
         
+        response_data = {"ok": True}
+        
         # Map field names
         if field == "remarks" or field == "factory_remarks":
             po_item.factory_remarks = value
         else:
             setattr(po_item, field, value)
         
+        # Auto-update GRN Status to "Cleared" when GRN Date is set
+        if field == "grn_date" and value and value.strip():
+            po_item.grn_status = "Cleared"
+            response_data["new_grn_status"] = "Cleared"
+        
+        # Auto-calculate Dispatched Qty and Balance when Dispatched Box is updated
+        if field == "dispatched_box":
+            try:
+                dispatched_box = int(value) if value else 0
+                caselot = po_item.caselot or 0
+                quantity = po_item.quantity or 0
+                
+                # Calculate dispatched quantity: dispatched_box * caselot
+                dispatched_qty = dispatched_box * caselot if caselot > 0 else 0
+                po_item.dispatched_qty = dispatched_qty
+                
+                # Calculate balance: quantity - dispatched_qty
+                balance = quantity - dispatched_qty
+                po_item.balance = max(0, balance)  # Ensure balance is not negative
+                
+                response_data["dispatched_qty"] = dispatched_qty
+                response_data["balance"] = po_item.balance
+            except (ValueError, TypeError):
+                # If conversion fails, keep existing values
+                pass
+        
         # commit happens automatically via context manager
 
-    return jsonify({"ok": True})
+    return jsonify(response_data)
 

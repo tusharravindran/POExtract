@@ -253,8 +253,8 @@ tbody input {
                         if (balanceCell) balanceCell.textContent = data.balance;
                     }
                     
-                    // CRITICAL FIX: Reload the page on STATUS change to enforce re-sort 
-                    if (field === 'status') {
+                    // CRITICAL FIX: Reload the page on STATUS or Ex-Factory Date change to enforce re-sort 
+                    if (field === 'status' || field === 'ex_factory_date') {
                         window.location.reload(); 
                         return; 
                     }
