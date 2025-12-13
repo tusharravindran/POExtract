@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: poextract-web
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DB_TYPE
+        value: postgresql
+      - key: PYTHON_VERSION
+        value: 3.13.2
+    healthCheckPath: /dashboard
+
+databases:
+  - name: poextract-db
+    databaseName: poextract_db
+    user: poextract_user
+    plan: free
+

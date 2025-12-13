@@ -17,24 +17,41 @@ Base = declarative_base()
 
 # ==================== CONFIGURATION ====================
 # Load from environment variables (fallback to SQLite for development)
-DB_TYPE = os.getenv('DB_TYPE', 'sqlite')  # Change to 'postgresql' for production
-DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_PORT = os.getenv('DB_PORT', '5432')
-DB_NAME = os.getenv('DB_NAME', 'poextract_db')
-DB_USER = os.getenv('DB_USER', 'postgres')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+# Support DATABASE_URL (used by Render, Heroku, etc.) or individual components
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-# Build connection string
-if DB_TYPE == 'postgresql':
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-elif DB_TYPE == 'sqlite':
-    # SQLite fallback for development
-    DATABASE_URL = "sqlite:///poextract.db"
+if DATABASE_URL:
+    # Render/Heroku style: postgres://user:pass@host:port/dbname
+    # SQLAlchemy needs postgresql:// (not postgres://)
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    DB_TYPE = 'postgresql'
 else:
-    raise ValueError(f"Unsupported DB_TYPE: {DB_TYPE}")
+    # Build from individual components
+    DB_TYPE = os.getenv('DB_TYPE', 'sqlite')  # Change to 'postgresql' for production
+    DB_HOST = os.getenv('DB_HOST', 'localhost')
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    DB_NAME = os.getenv('DB_NAME', 'poextract_db')
+    DB_USER = os.getenv('DB_USER', 'postgres')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+    
+    # Build connection string
+    if DB_TYPE == 'postgresql':
+        DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    elif DB_TYPE == 'sqlite':
+        # SQLite fallback for development
+        DATABASE_URL = "sqlite:///poextract.db"
+    else:
+        raise ValueError(f"Unsupported DB_TYPE: {DB_TYPE}")
 
 # ==================== ENGINE & SESSION ====================
-if DB_TYPE == 'postgresql':
+# Determine DB_TYPE from DATABASE_URL if not explicitly set
+if not DATABASE_URL or DATABASE_URL.startswith('sqlite'):
+    db_type_for_engine = 'sqlite'
+else:
+    db_type_for_engine = 'postgresql'
+
+if db_type_for_engine == 'postgresql':
     engine = create_engine(
         DATABASE_URL,
         poolclass=QueuePool,
@@ -237,11 +254,11 @@ def get_style_and_buyer_from_db(ean: str):
 def initialize_db():
     """Create all tables if they don't exist"""
     Base.metadata.create_all(bind=engine)
-    db_type_str = DB_TYPE.upper()
-    if DB_TYPE == 'postgresql':
-        print(f"✓ Database initialized: {db_type_str} at {DB_HOST}:{DB_PORT}/{DB_NAME}")
+    if DATABASE_URL and not DATABASE_URL.startswith('sqlite'):
+        # PostgreSQL (from DATABASE_URL or individual components)
+        print(f"✓ Database initialized: PostgreSQL")
     else:
-        print(f"✓ Database initialized: {db_type_str} (SQLite fallback)")
+        print(f"✓ Database initialized: SQLite (fallback)")
 
 
 # ==================== EXAMPLE USAGE ====================
