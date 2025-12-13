@@ -13,7 +13,7 @@ from database import POItem, StyleMaster
 load_dotenv()
 
 print("="*70)
-print("MIGRATION TEST: SQLite vs PostgreSQL Comparison")
+print("MIGRATION TEST: Old SQLite vs New Database Comparison")
 print("="*70)
 
 # ==================== CONNECT TO BOTH DATABASES ====================
@@ -25,27 +25,32 @@ sqlite_po.row_factory = sqlite3.Row
 sqlite_master = sqlite3.connect('style_master.db')
 sqlite_master.row_factory = sqlite3.Row
 
-# PostgreSQL (new)
-DB_TYPE = os.getenv('DB_TYPE', 'postgresql')
-DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_PORT = os.getenv('DB_PORT', '5432')
-DB_NAME = os.getenv('DB_NAME', 'poextract_db')
-DB_USER = os.getenv('DB_USER', 'postgres')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+# New Database (PostgreSQL or SQLite)
+DB_TYPE = os.getenv('DB_TYPE', 'sqlite')
+print(f"\n2. Connecting to new database (type: {DB_TYPE})...")
 
-if DB_TYPE != 'postgresql':
-    print("ERROR: Set DB_TYPE=postgresql in .env file")
-    exit(1)
-
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-print(f"2. Connecting to PostgreSQL (new): {DB_HOST}:{DB_PORT}/{DB_NAME}")
+if DB_TYPE == 'postgresql':
+    # PostgreSQL connection
+    DB_HOST = os.getenv('DB_HOST', 'localhost')
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    DB_NAME = os.getenv('DB_NAME', 'poextract_db')
+    DB_USER = os.getenv('DB_USER', 'postgres')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    print(f"   PostgreSQL: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+else:
+    # SQLite connection (new unified database)
+    DATABASE_URL = "sqlite:///poextract.db"
+    print(f"   SQLite: poextract.db")
 
 try:
-    pg_engine = create_engine(DATABASE_URL)
-    Session = sessionmaker(bind=pg_engine)
-    pg_session = Session()
+    new_engine = create_engine(DATABASE_URL)
+    Session = sessionmaker(bind=new_engine)
+    new_session = Session()
+    # Use pg_session name for compatibility with rest of script
+    pg_session = new_session
 except Exception as e:
-    print(f"ERROR: Could not connect to PostgreSQL: {e}")
+    print(f"ERROR: Could not connect to new database: {e}")
     exit(1)
 
 # ==================== TEST 1: COUNT RECORDS ====================
@@ -58,8 +63,8 @@ sqlite_master_count = sqlite_master.execute("SELECT COUNT(*) as count FROM style
 pg_master_count = pg_session.query(StyleMaster).count()
 
 print(f"\nstyle_master:")
-print(f"  SQLite:  {sqlite_master_count} records")
-print(f"  PostgreSQL: {pg_master_count} records")
+print(f"  Old SQLite:  {sqlite_master_count} records")
+print(f"  New Database ({DB_TYPE.upper()}): {pg_master_count} records")
 if sqlite_master_count == pg_master_count:
     print(f"  ✓ MATCH")
 else:
@@ -70,8 +75,8 @@ sqlite_po_count = sqlite_po.execute("SELECT COUNT(*) as count FROM po_items").fe
 pg_po_count = pg_session.query(POItem).count()
 
 print(f"\npo_items:")
-print(f"  SQLite:  {sqlite_po_count} records")
-print(f"  PostgreSQL: {pg_po_count} records")
+print(f"  Old SQLite:  {sqlite_po_count} records")
+print(f"  New Database ({DB_TYPE.upper()}): {pg_po_count} records")
 if sqlite_po_count == pg_po_count:
     print(f"  ✓ MATCH")
 else:
@@ -89,8 +94,8 @@ pg_master_rows = pg_session.query(StyleMaster).limit(5).all()
 
 for i, (sqlite_row, pg_row) in enumerate(zip(sqlite_master_rows, pg_master_rows), 1):
     print(f"\n  Record {i}:")
-    print(f"    SQLite:    id={sqlite_row['id']}, ean={sqlite_row['ean']}, style_no={sqlite_row['style_no']}")
-    print(f"    PostgreSQL: id={pg_row.id}, ean={pg_row.ean}, style_no={pg_row.style_no}")
+    print(f"    Old SQLite:    id={sqlite_row['id']}, ean={sqlite_row['ean']}, style_no={sqlite_row['style_no']}")
+    print(f"    New Database: id={pg_row.id}, ean={pg_row.ean}, style_no={pg_row.style_no}")
     
     if (sqlite_row['id'] == pg_row.id and 
         sqlite_row['ean'] == pg_row.ean and 
@@ -106,8 +111,8 @@ pg_po_rows = pg_session.query(POItem).limit(5).all()
 
 for i, (sqlite_row, pg_row) in enumerate(zip(sqlite_po_rows, pg_po_rows), 1):
     print(f"\n  Record {i}:")
-    print(f"    SQLite:    id={sqlite_row['id']}, po_number={sqlite_row['po_number']}, ean={sqlite_row['ean']}")
-    print(f"    PostgreSQL: id={pg_row.id}, po_number={pg_row.po_number}, ean={pg_row.ean}")
+    print(f"    Old SQLite:    id={sqlite_row['id']}, po_number={sqlite_row['po_number']}, ean={sqlite_row['ean']}")
+    print(f"    New Database: id={pg_row.id}, po_number={pg_row.po_number}, ean={pg_row.ean}")
     
     if (sqlite_row['id'] == pg_row.id and 
         sqlite_row['po_number'] == pg_row.po_number and 
@@ -141,8 +146,8 @@ print(f"  Found {len(sqlite_join_results)} records with matching EANs")
 for r in sqlite_join_results[:3]:
     print(f"    PO #{r['po_number']} (EAN: {r['ean']}) -> Style: {r['style_no']}, Buyer: {r['buyer']}")
 
-# PostgreSQL JOIN (new way - proper JOIN)
-print("\nPostgreSQL (new method - JOIN query):")
+# New Database JOIN (new way - proper JOIN)
+print(f"\nNew Database ({DB_TYPE.upper()}) (new method - JOIN query):")
 pg_join_results = pg_session.query(POItem, StyleMaster).join(
     StyleMaster, POItem.ean == StyleMaster.ean
 ).limit(5).all()
@@ -171,17 +176,17 @@ pg_eans = set(row.ean for row in pg_session.query(StyleMaster.ean).all())
 pg_po_eans = set(row.ean for row in pg_session.query(POItem.ean).filter(POItem.ean.isnot(None)).distinct().all())
 pg_orphans = pg_po_eans - pg_eans
 
-print(f"  SQLite: {len(sqlite_orphans)} orphaned EANs")
-print(f"  PostgreSQL: {len(pg_orphans)} orphaned EANs")
+print(f"  Old SQLite: {len(sqlite_orphans)} orphaned EANs")
+print(f"  New Database ({DB_TYPE.upper()}): {len(pg_orphans)} orphaned EANs")
 
 if sqlite_orphans == pg_orphans:
     print(f"  ✓ Orphaned EANs MATCH")
 else:
     print(f"  ✗ Orphaned EANs MISMATCH")
     if sqlite_orphans - pg_orphans:
-        print(f"    Missing in PostgreSQL: {sqlite_orphans - pg_orphans}")
+        print(f"    Missing in New Database: {sqlite_orphans - pg_orphans}")
     if pg_orphans - sqlite_orphans:
-        print(f"    Extra in PostgreSQL: {pg_orphans - sqlite_orphans}")
+        print(f"    Extra in New Database: {pg_orphans - sqlite_orphans}")
 
 # ==================== TEST 5: QUERY RESULTS COMPARISON ====================
 print("\n" + "="*70)
@@ -194,8 +199,8 @@ print("\nQuery: SELECT * FROM po_items WHERE status = 'Pending'")
 sqlite_pending = sqlite_po.execute("SELECT COUNT(*) as count FROM po_items WHERE status = 'Pending'").fetchone()['count']
 pg_pending = pg_session.query(POItem).filter_by(status='Pending').count()
 
-print(f"  SQLite:  {sqlite_pending} records")
-print(f"  PostgreSQL: {pg_pending} records")
+print(f"  Old SQLite:  {sqlite_pending} records")
+print(f"  New Database ({DB_TYPE.upper()}): {pg_pending} records")
 if sqlite_pending == pg_pending:
     print(f"  ✓ MATCH")
 else:
@@ -211,9 +216,9 @@ if test_ean:
     
     print(f"  Testing EAN: {test_ean}")
     if sqlite_style:
-        print(f"    SQLite:    style_no={sqlite_style['style_no']}, buyer={sqlite_style['buyer']}")
+        print(f"    Old SQLite:    style_no={sqlite_style['style_no']}, buyer={sqlite_style['buyer']}")
     if pg_style:
-        print(f"    PostgreSQL: style_no={pg_style.style_no}, buyer={pg_style.buyer}")
+        print(f"    New Database: style_no={pg_style.style_no}, buyer={pg_style.buyer}")
     
     if sqlite_style and pg_style:
         if sqlite_style['style_no'] == pg_style.style_no and sqlite_style['buyer'] == pg_style.buyer:
@@ -265,7 +270,7 @@ if sqlite_sample:
         if mismatches:
             print(f"  ✗ Mismatched fields: {len(mismatches)}")
             for field, sqlite_val, pg_val in mismatches[:5]:
-                print(f"    {field}: SQLite='{sqlite_val}' vs PostgreSQL='{pg_val}'")
+                print(f"    {field}: Old SQLite='{sqlite_val}' vs New Database='{pg_val}'")
         else:
             print(f"  ✓ All fields MATCH")
 

@@ -563,9 +563,21 @@ def update_field():
 
 # ---------------- ENTRY POINT ---------------- #
 
-if __name__ == "__main__":
-    # Production: Use environment PORT, default to 5001 (5000 is often used by AirPlay on macOS)
-    # Development: Can still use debug mode
-    port = int(os.environ.get('PORT', 5001))
-    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+if __name__ == '__main__':
+    # Development mode: Use Flask dev server with auto-reload
+    # Production mode: Use Waitress server (for Render.com)
+    dev_mode = os.environ.get('FLASK_ENV', 'development').lower() == 'development'
+    
+    if dev_mode:
+        # Development: Flask dev server with debug mode
+        port = int(os.environ.get('PORT', 5001))
+        debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+        print(f"🚀 Starting Flask development server on http://0.0.0.0:{port}")
+        print(f"   Debug mode: {debug}")
+        app.run(host='0.0.0.0', port=port, debug=debug)
+    else:
+        # Production: Waitress server (for Render.com)
+        from waitress import serve
+        port = int(os.environ.get('PORT', 10000))
+        print(f"🚀 Starting Waitress production server on http://0.0.0.0:{port}")
+        serve(app, host='0.0.0.0', port=port)
