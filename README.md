@@ -68,7 +68,7 @@ Edit `.env` file:
 SECRET_KEY=your-generated-secret-key-here
 
 # Database Configuration
-DB_TYPE=postgresql          # or 'sqlite' for local dev
+DB_TYPE=postgresql         
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=poextract_db
@@ -80,12 +80,6 @@ FLASK_ENV=development        # 'development' or 'production'
 FLASK_DEBUG=True             # True for dev, False for production
 PORT=5001                    # Port for development server
 SESSION_TIMEOUT=3600         # Session timeout in seconds (default: 1 hour)
-```
-
-**For local development with SQLite:**
-```env
-DB_TYPE=sqlite
-# Other DB_* variables are ignored when using SQLite
 ```
 
 **Important**: The `SECRET_KEY` is required for authentication and session management. Never commit it to version control.
@@ -484,4 +478,4 @@ pip install -r requirements.txt
 
 ## Support
 
-[Your Support Information Here]
+[tushar - tusharrravindran@gmail.com]
