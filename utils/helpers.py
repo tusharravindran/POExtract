@@ -73,9 +73,9 @@ def parse_exfactory_date_for_sort(date_str):
 def calculate_exfactory_flag(date_str):
     """
     Returns: 'overdue' / 'due-soon' / '' based on ex-factory date.
-    - 'overdue': All past dates (RED), except those within 3 days of today
-    - 'due-soon': Past dates within 3 days of today (1, 2, or 3 days ago) → YELLOW
-    - '': Future dates and dates more than 3 days in the past → Normal
+    - 'overdue': Today and all past dates (RED)
+    - 'due-soon': Next 3 days after today (1, 2, 3 days from today) → YELLOW
+    - '': Future dates beyond 3 days → Normal
     """
     if not date_str or date_str.strip() == "":
         return ""
@@ -87,15 +87,15 @@ def calculate_exfactory_flag(date_str):
         # Calculate days difference (positive = future, negative = past)
         days_diff = (d - today).days
         
-        # Past dates within 3 days of today (1, 2, or 3 days ago) → YELLOW (due-soon)
-        if -3 <= days_diff <= -1:
-            return "due-soon"
-        
-        # All other past dates (including today and more than 3 days ago) → RED (overdue)
+        # Today and all past dates → RED (overdue)
         if days_diff <= 0:
             return "overdue"
         
-        # Future dates → Normal (no highlighting)
+        # Next 3 days after today (1, 2, 3 days from today) → YELLOW (due-soon)
+        if 1 <= days_diff <= 3:
+            return "due-soon"
+        
+        # Future dates beyond 3 days → Normal (no highlighting)
         return ""
     except Exception as e:
         # If date parsing fails, return empty (no highlighting)
