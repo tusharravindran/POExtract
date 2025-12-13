@@ -5,6 +5,10 @@ import pandas as pd
 import io
 from datetime import datetime, timedelta
 from sqlalchemy import case, func, or_
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from extractor import extract_items
 from database import (
