@@ -127,6 +127,27 @@ thead select {
             background-color: rgba(255, 255, 255, 0.9) !important;
         }
 
+        /* Dispatched status styling - ALWAYS light grey background (even if overdue/due-soon) */
+        /* This must come AFTER overdue/due-soon styles to override them for dispatched items */
+        tr.status-dispatched td {
+            background-color: #D3D3D3 !important; /* Light grey - always, regardless of Ex-Factory Date */
+            color: #333 !important; /* Ensure text is readable on grey */
+        }
+
+        /* Ensure inputs/selects are readable on dispatched background */
+        tr.status-dispatched td input,
+        tr.status-dispatched td select,
+        tr.status-dispatched td textarea {
+            background-color: rgba(255, 255, 255, 0.9) !important;
+            color: #333 !important;
+        }
+
+        /* Frozen columns should also get grey when row is dispatched */
+        tr.status-dispatched .freeze-col {
+            background-color: #D3D3D3 !important;
+            color: #333 !important;
+        }
+
         /* ============ FREEZE FIRST 6 COLUMNS ============ */
 
         /* Common sticky style for left-frozen cells */
@@ -544,7 +565,7 @@ function initializeColumnFilters() {
 
             <tbody>
                 {% for r in data %}
-                <tr class="{% if r.exfactory_flag == 'overdue' %}overdue{% elif r.exfactory_flag == 'due-soon' %}due-soon{% endif %}">
+                <tr class="{% if r.exfactory_flag == 'overdue' %}overdue{% elif r.exfactory_flag == 'due-soon' %}due-soon{% endif %} {% if r.status == 'Dispatched' %}status-dispatched{% endif %}">
 
                     <td class="w-id freeze-col freeze-1">{{ r.id }}</td>
                     <td class="w-buyer freeze-col freeze-2">{{ r.buyer }}</td>
