@@ -10,7 +10,7 @@ from datetime import datetime
 from database import get_db_session
 from models.po_item import POItem
 from models.style_master import StyleMaster
-from auth.decorators import login_required
+from auth.decorators import login_required, admin_required
 from extractor import extract_items
 from utils.helpers import (
     calc_delivery_minus_4,
@@ -299,3 +299,16 @@ def update_field():
 
     return jsonify(response_data)
 
+# routes/po_routes.py
+
+@po_bp.route("/admin/clear-po", methods=["POST"])
+@admin_required
+def clear_po_data():
+    from models.po_item import POItem
+    from database import get_db_session
+
+    with get_db_session() as session:
+        session.query(POItem).delete()
+        session.commit()
+
+    return redirect(url_for("dashboard.dashboard"))
