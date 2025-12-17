@@ -217,6 +217,29 @@ tbody input {
     max-width: 95%;
     box-sizing: border-box;
 }
+
+/* Delete button styling */
+.btn-delete {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    width: 100%;
+    min-width: 35px;
+}
+
+.btn-delete:hover {
+    background: #c82333;
+    transform: scale(1.1);
+}
+
+.btn-delete:active {
+    transform: scale(0.95);
+}
 </style>
 {% endblock %}
 
@@ -447,6 +470,63 @@ function initializeColumnFilters() {
         select.addEventListener('change', filterTable);
     });
 });
+
+        // Delete PO record function
+        function deletePORecord(poId, poNumber) {
+            // Confirm deletion
+            const confirmMessage = `Are you sure you want to delete PO record #${poId} (PO: ${poNumber})?\n\nThis action cannot be undone.`;
+            
+            if (!confirm(confirmMessage)) {
+                return; // User cancelled
+            }
+            
+            // Show loading state
+            const deleteButton = event.target;
+            const originalText = deleteButton.innerHTML;
+            deleteButton.innerHTML = '⏳';
+            deleteButton.disabled = true;
+            deleteButton.style.opacity = '0.6';
+            
+            // Send delete request
+            fetch(`/delete/${poId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the row from the table
+                    const row = deleteButton.closest('tr');
+                    row.style.transition = 'opacity 0.3s';
+                    row.style.opacity = '0';
+                    
+                    setTimeout(() => {
+                        row.remove();
+                        // Show success message
+                        alert(data.message || 'PO record deleted successfully');
+                        // Reload page to refresh filters and ensure consistency
+                        window.location.reload();
+                    }, 300);
+                } else {
+                    // Show error message
+                    alert('Error: ' + (data.error || 'Failed to delete PO record'));
+                    // Restore button
+                    deleteButton.innerHTML = originalText;
+                    deleteButton.disabled = false;
+                    deleteButton.style.opacity = '1';
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting PO record:', error);
+                alert('Error: ' + error.message);
+                // Restore button
+                deleteButton.innerHTML = originalText;
+                deleteButton.disabled = false;
+                deleteButton.style.opacity = '1';
+            });
+        }
 </script>
 {% endblock %}
 
@@ -570,6 +650,11 @@ function initializeColumnFilters() {
                         <span class="header-label">GRN Status</span>
                         <select data-filter-column data-column-index="24"><option value="">(All)</option></select>
 </th>
+                    {% if current_user.role == 'admin' %}
+                    <th class="w-small">
+                        <span class="header-label">Action</span>
+                    </th>
+                    {% endif %}
                 </tr>
             </thead>
 
@@ -660,6 +745,16 @@ function initializeColumnFilters() {
                             <option value="Cleared" {% if r.grn_status=='Cleared' %}selected{% endif %}>Cleared</option>
                         </select>
                     </td>
+
+                    {% if current_user.role == 'admin' %}
+                    <td class="w-small">
+                        <button onclick="deletePORecord({{r.id}}, '{{r.po_number}}')" 
+                                class="btn-delete" 
+                                title="Delete this PO record">
+                            🗑️
+                        </button>
+                    </td>
+                    {% endif %}
 
                 </tr>
                 {% endfor %}

@@ -28,6 +28,37 @@
     .info-section strong {
         color: #333;
     }
+    /* Tab Styles */
+    .tabs {
+        display: flex;
+        border-bottom: 2px solid #e0e0e0;
+        margin-bottom: 30px;
+    }
+    .tab {
+        padding: 12px 24px;
+        cursor: pointer;
+        background: none;
+        border: none;
+        font-size: 16px;
+        font-weight: 500;
+        color: #666;
+        border-bottom: 3px solid transparent;
+        transition: all 0.3s;
+    }
+    .tab:hover {
+        color: #667eea;
+        background: #f8f9fa;
+    }
+    .tab.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
     .profile-section h2 {
         color: #667eea;
         margin-bottom: 15px;
@@ -49,7 +80,11 @@
         border-radius: 5px;
         font-size: 14px;
     }
-    .btn-update {
+    .form-group input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+    .btn-update, .btn-create-admin {
         padding: 10px 20px;
         background: #667eea;
         color: white;
@@ -59,8 +94,20 @@
         font-size: 14px;
         font-weight: 600;
     }
-    .btn-update:hover {
+    .btn-update:hover, .btn-create-admin:hover {
         background: #5568d3;
+    }
+    .password-note {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        padding: 12px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        color: #856404;
+        font-size: 14px;
+    }
+    .password-note strong {
+        color: #856404;
     }
 </style>
 {% endblock %}
@@ -90,37 +137,128 @@
         {% endif %}
     </div>
     
-    <div class="profile-section">
-        <h2>Profile Information</h2>
-        <form id="profileForm">
-            <div class="form-group">
-                <label for="full_name">Full Name</label>
-                <input type="text" id="full_name" name="full_name" value="{{ user.full_name or '' }}">
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('profile')">Profile Information</button>
+        <button class="tab" onclick="switchTab('create-admin')">Create Admin User</button>
+    </div>
+    
+    <!-- Profile Information Tab -->
+    <div id="profile-tab" class="tab-content active">
+        <div class="profile-section">
+            <h2>Profile Information</h2>
+            <form id="profileForm">
+                <div class="form-group">
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" value="{{ user.full_name or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" value="{{ user.email }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="phone">Phone</label>
+                    <input type="text" id="phone" name="phone" value="{{ user.phone or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="company">Company</label>
+                    <input type="text" id="company" name="company" value="{{ user.company or '' }}">
+                </div>
+                
+                <button type="submit" class="btn-update">Update Profile</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Create Admin User Tab -->
+    <div id="create-admin-tab" class="tab-content">
+        <div class="profile-section">
+            <h2>Create Admin User</h2>
+            <div class="password-note">
+                <strong>Note:</strong> This feature requires the main admin password to create a new admin user.
             </div>
-            
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" value="{{ user.email }}">
-            </div>
-            
-            <div class="form-group">
-                <label for="phone">Phone</label>
-                <input type="text" id="phone" name="phone" value="{{ user.phone or '' }}">
-            </div>
-            
-            <div class="form-group">
-                <label for="company">Company</label>
-                <input type="text" id="company" name="company" value="{{ user.company or '' }}">
-            </div>
-            
-            <button type="submit" class="btn-update">Update Profile</button>
-        </form>
+            <form id="createAdminForm">
+                <div class="form-group">
+                    <label for="admin_password">Main Admin Password *</label>
+                    <input type="password" id="admin_password" name="admin_password" required 
+                           placeholder="Enter main admin password">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_username">New Admin Username *</label>
+                    <input type="text" id="new_username" name="new_username" required 
+                           placeholder="Enter username for new admin">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_email">New Admin Email *</label>
+                    <input type="email" id="new_email" name="new_email" required 
+                           placeholder="Enter email for new admin">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_password">New Admin Password *</label>
+                    <input type="password" id="new_password" name="new_password" required 
+                           placeholder="Enter password for new admin (min 6 characters)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password *</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required 
+                           placeholder="Confirm password">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_full_name">Full Name</label>
+                    <input type="text" id="new_full_name" name="new_full_name" 
+                           placeholder="Enter full name (optional)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_phone">Phone</label>
+                    <input type="text" id="new_phone" name="new_phone" 
+                           placeholder="Enter phone number (optional)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_company">Company</label>
+                    <input type="text" id="new_company" name="new_company" 
+                           placeholder="Enter company name (optional)">
+                </div>
+                
+                <button type="submit" class="btn-create-admin">Create Admin User</button>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // Tab switching functionality
+    function switchTab(tabName) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Show selected tab
+        if (tabName === 'profile') {
+            document.getElementById('profile-tab').classList.add('active');
+            document.querySelectorAll('.tab')[0].classList.add('active');
+        } else if (tabName === 'create-admin') {
+            document.getElementById('create-admin-tab').classList.add('active');
+            document.querySelectorAll('.tab')[1].classList.add('active');
+        }
+    }
+    
+    // Profile form submission
     document.getElementById('profileForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         
@@ -139,6 +277,46 @@
                 location.reload();
             } else {
                 alert('Error: ' + (data.error || 'Failed to update profile'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    });
+    
+    // Create Admin form submission
+    document.getElementById('createAdminForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const password = formData.get('new_password');
+        const confirmPassword = formData.get('confirm_password');
+        
+        // Validate passwords match
+        if (password !== confirmPassword) {
+            alert('Error: Passwords do not match');
+            return;
+        }
+        
+        // Validate password length
+        if (password.length < 6) {
+            alert('Error: Password must be at least 6 characters long');
+            return;
+        }
+        
+        try {
+            const response = await fetch('{{ url_for("auth.create_admin_user") }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Admin user created successfully!');
+                // Reset form
+                this.reset();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to create admin user'));
             }
         } catch (error) {
             alert('Error: ' + error.message);

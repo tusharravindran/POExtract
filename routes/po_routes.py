@@ -312,3 +312,29 @@ def clear_po_data():
         session.commit()
 
     return redirect(url_for("dashboard.dashboard"))
+
+
+@po_bp.route("/delete/<int:po_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_po_record(po_id):
+    """Delete a single PO record (Admin only)"""
+    try:
+        with get_db_session() as session:
+            po_item = session.query(POItem).filter_by(id=po_id).first()
+            if not po_item:
+                return jsonify({"error": "PO record not found"}), 404
+            
+            # Store some info for the response
+            po_number = po_item.po_number
+            po_id_value = po_item.id
+            
+            session.delete(po_item)
+            session.commit()
+            
+            return jsonify({
+                "success": True,
+                "message": f"PO record #{po_id_value} (PO: {po_number}) deleted successfully"
+            })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

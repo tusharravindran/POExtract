@@ -315,3 +315,78 @@ def toggle_user_verified(user_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@auth_bp.route('/create-admin-user', methods=['POST'])
+@login_required
+def create_admin_user():
+    """Create admin user - accessible to all logged-in users but requires main admin password"""
+    # Main admin password
+    MAIN_ADMIN_PASSWORD = "Admin@1234009XO$"
+    
+    try:
+        # Get form data
+        admin_password = request.form.get('admin_password', '').strip()
+        username = request.form.get('new_username', '').strip()
+        email = request.form.get('new_email', '').strip()
+        password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        full_name = request.form.get('new_full_name', '').strip()
+        phone = request.form.get('new_phone', '').strip()
+        company = request.form.get('new_company', '').strip()
+        
+        # Validate main admin password
+        if admin_password != MAIN_ADMIN_PASSWORD:
+            return jsonify({'error': 'Invalid main admin password'}), 401
+        
+        # Validate required fields
+        errors = []
+        if not username:
+            errors.append('Username is required')
+        if not email:
+            errors.append('Email is required')
+        if not password:
+            errors.append('Password is required')
+        if password != confirm_password:
+            errors.append('Passwords do not match')
+        if len(password) < 6:
+            errors.append('Password must be at least 6 characters')
+        
+        if errors:
+            return jsonify({'error': '; '.join(errors)}), 400
+        
+        # Create admin user
+        with get_db_session() as db_session:
+            # Check if username or email already exists
+            existing_user = db_session.query(User).filter(
+                (User.username == username) | (User.email == email)
+            ).first()
+            
+            if existing_user:
+                if existing_user.username == username:
+                    return jsonify({'error': 'Username already exists'}), 400
+                else:
+                    return jsonify({'error': 'Email already registered'}), 400
+            
+            # Create new admin user
+            new_admin = User(
+                username=username,
+                email=email,
+                full_name=full_name if full_name else None,
+                phone=phone if phone else None,
+                company=company if company else None,
+                role='admin',
+                is_active=True,
+                is_verified=True
+            )
+            new_admin.set_password(password)
+            
+            db_session.add(new_admin)
+            db_session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Admin user "{username}" created successfully'
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
