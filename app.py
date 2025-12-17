@@ -95,9 +95,10 @@ def index():
     return redirect(url_for('auth.login'))
 
 
+
 # ---------------- ENTRY POINT ---------------- #
 
-if __name__ == '__main__':
+if __name__ == '__main__':	
     # Development mode: Use Flask dev server with auto-reload
     # Production mode: Use Waitress server (for Render.com)
     dev_mode = os.environ.get('FLASK_ENV', 'development').lower() == 'development'
@@ -115,3 +116,6 @@ if __name__ == '__main__':
         port = int(os.environ.get('PORT', 10000))
         print(f"🚀 Starting Waitress production server on http://0.0.0.0:{port}")
         serve(app, host='0.0.0.0', port=port)
+if __name__ == '__main__':
+    print("🔥 FORCE DEBUG MODE 🔥")
+    app.run(host='0.0.0.0', port=5001, debug=True, use_reloader=False)

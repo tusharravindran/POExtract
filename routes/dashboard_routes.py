@@ -8,6 +8,7 @@ from database import get_db_session
 from models.po_item import POItem
 from models.style_master import StyleMaster
 from auth.decorators import login_required
+from auth.helpers import get_current_user 
 from utils.helpers import calculate_exfactory_flag, parse_exfactory_date_for_sort
 from config import FACTORIES, TRANSPORTERS
 
@@ -65,5 +66,6 @@ def dashboard():
         data=processed,
         factories=FACTORIES,
         transporters=TRANSPORTERS,
+        current_user=get_current_user()  
     )
 
